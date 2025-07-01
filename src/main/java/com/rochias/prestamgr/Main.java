@@ -337,21 +337,21 @@ public class Main extends Application {
             Button bPDF = new Button("Fiche PDF");
             Button bPDFAll = new Button("PDF global");
 
-            bAdd.setOnAction(_->editDialog(null));
-            bEdit.setOnAction(_->editDialog(table.getSelectionModel().getSelectedItem()));
-            bDel.setOnAction(_->{
+            bAdd.setOnAction(e->editDialog(null));
+            bEdit.setOnAction(e->editDialog(table.getSelectionModel().getSelectedItem()));
+            bDel.setOnAction(e->{
                 Prestataire p = table.getSelectionModel().getSelectedItem();
                 if(p!=null && confirm("Supprimer "+p.getNom()+" ?")){
                     dao.delete(p.getId()); refresh(search.getText());
                 }
             });
-            bService.setOnAction(_->addServiceDialog());
-            bHist.setOnAction(_->showHistoryDialog());
-            bPDF.setOnAction(_->{
+            bService.setOnAction(e->addServiceDialog());
+            bHist.setOnAction(e->showHistoryDialog());
+            bPDF.setOnAction(e->{
                 Prestataire p = table.getSelectionModel().getSelectedItem();
                 if(p!=null) PDF.fiche(stage, p);
             });
-            bPDFAll.setOnAction(_->PDF.historiqueGlobal(stage, dao));
+            bPDFAll.setOnAction(e->PDF.historiqueGlobal(stage, dao));
 
             HBox hb = new HBox(8,bAdd,bEdit,bDel,bService,bHist,bPDF,bPDFAll);
             hb.setPadding(new Insets(10));
@@ -463,7 +463,7 @@ public class Main extends Application {
             targetField.setTextFormatter(new TextFormatter<>(numFilter));
 
             Button compute = new Button("Calculer");
-            compute.setOnAction(_->computeDrop());
+            compute.setOnAction(e->computeDrop());
 
             GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(4);
             gp.addRow(0,new Label("Taux base :"),baseRateField);
