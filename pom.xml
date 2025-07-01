@@ -59,7 +59,8 @@
         <dependency>
             <groupId>com.sun.mail</groupId>
             <artifactId>jakarta.mail</artifactId>
-            <version>2.0.1</version>  <!-- corrigé depuis 2.0.3 (inexistant) → 2.0.1 :contentReference[oaicite:0]{index=0} -->
+            <version>2.0.1</version>
+            <!-- corrigé depuis 2.0.3 (inexistant) -->
         </dependency>
     </dependencies>
 
