@@ -23,8 +23,8 @@ import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import com.github.librepdf.openpdf.text.*;
-import com.github.librepdf.openpdf.text.pdf.PdfWriter;
+import com.lowagie.text.*;
+import com.lowagie.text.pdf.PdfWriter;
 import jakarta.mail.*;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
