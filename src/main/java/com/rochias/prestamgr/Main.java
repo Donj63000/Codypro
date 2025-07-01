@@ -61,13 +61,22 @@ public class Main extends Application {
      *------------------------------------------------------------------------*/
     public static void main(String[] args) { launch(args); }
 
+    private DB dao;
+
     @Override
     public void start(Stage primaryStage) {
-        DB dao = new DB(DB_FILE);
+        dao = new DB(DB_FILE);
         GUI gui = new GUI(primaryStage, dao);
         primaryStage.setTitle("Gestion des Prestataires — Rochias");
         primaryStage.setScene(new Scene(gui.root, 920, 600));
         primaryStage.show();
+    }
+
+    @Override
+    public void stop() {
+        if (dao != null) {
+            dao.close();
+        }
     }
 
     /*======================================================================*/
@@ -79,30 +88,41 @@ public class Main extends Application {
         DB(String path) {
             try {
                 conn = DriverManager.getConnection("jdbc:sqlite:" + path);
-                Statement st = conn.createStatement();
-                st.execute("PRAGMA foreign_keys = 1");
+                try (Statement st = conn.createStatement()) {
+                    st.execute("PRAGMA foreign_keys = 1");
+                }
                 // --- schéma
-                conn.createStatement().executeUpdate("""
-                    CREATE TABLE IF NOT EXISTS prestataires (
-                        id INTEGER PRIMARY KEY,
-                        nom TEXT UNIQUE NOT NULL COLLATE NOCASE,
-                        societe TEXT,
-                        telephone TEXT,
-                        email TEXT,
-                        note INTEGER CHECK(note BETWEEN 0 AND 100),
-                        facturation TEXT,
-                        date_contrat TEXT
-                    );
-                    """);
-                conn.createStatement().executeUpdate("""
-                    CREATE TABLE IF NOT EXISTS services (
-                        id INTEGER PRIMARY KEY,
-                        prestataire_id INTEGER REFERENCES prestataires(id) ON DELETE CASCADE,
-                        description TEXT,
-                        date TEXT
-                    );
-                    """);
+                try (Statement st = conn.createStatement()) {
+                    st.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS prestataires (
+                            id INTEGER PRIMARY KEY,
+                            nom TEXT UNIQUE NOT NULL COLLATE NOCASE,
+                            societe TEXT,
+                            telephone TEXT,
+                            email TEXT,
+                            note INTEGER CHECK(note BETWEEN 0 AND 100),
+                            facturation TEXT,
+                            date_contrat TEXT
+                        );
+                        """);
+                }
+                try (Statement st = conn.createStatement()) {
+                    st.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS services (
+                            id INTEGER PRIMARY KEY,
+                            prestataire_id INTEGER REFERENCES prestataires(id) ON DELETE CASCADE,
+                            description TEXT,
+                            date TEXT
+                        );
+                        """);
+                }
             } catch (Exception e) { throw new RuntimeException(e); }
+        }
+
+        void close() {
+            try {
+                conn.close();
+            } catch (SQLException e) { throw new RuntimeException(e); }
         }
 
         /*--------------------  CRUD Prestataires  ------------------------*/
