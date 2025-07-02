@@ -387,8 +387,10 @@ public class Main extends Application {
             bDel.setOnAction(e->{
                 Prestataire p = table.getSelectionModel().getSelectedItem();
                 if(p!=null && confirm("Supprimer "+p.getNom()+" ?")){
-                    runAsync(() -> { dao.delete(p.getId()); return null; },
-                             () -> refresh(search.getText()));
+                    runAsync(
+                        () -> dao.delete(p.getId()),
+                        () -> refresh(search.getText())
+                    );
                 }
             });
             bService.setOnAction(e->addServiceDialog());
@@ -401,8 +403,12 @@ public class Main extends Application {
                     fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF","*.pdf"));
                     Path f = Optional.ofNullable(fc.showSaveDialog(stage)).map(java.io.File::toPath).orElse(null);
                     if(f!=null){
-                        runAsync(() -> { PDF.generateFiche(f, p); return null; },
-                                () -> new Alert(Alert.AlertType.INFORMATION,"Fiche PDF exportée",ButtonType.OK).showAndWait());
+                        runAsync(
+                            () -> { PDF.generateFiche(f, p); return null; },
+                            v -> new Alert(Alert.AlertType.INFORMATION,
+                                           "Fiche PDF exportée",
+                                           ButtonType.OK).showAndWait()
+                        );
                     }
                 }
             });
@@ -412,8 +418,12 @@ public class Main extends Application {
                 fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF","*.pdf"));
                 Path f = Optional.ofNullable(fc.showSaveDialog(stage)).map(java.io.File::toPath).orElse(null);
                 if(f!=null){
-                    runAsync(() -> { PDF.generateHistorique(f, dao); return null; },
-                            () -> new Alert(Alert.AlertType.INFORMATION,"Historique PDF exporté",ButtonType.OK).showAndWait());
+                    runAsync(
+                        () -> { PDF.generateHistorique(f, dao); return null; },
+                        v -> new Alert(Alert.AlertType.INFORMATION,
+                                       "Historique PDF exporté",
+                                       ButtonType.OK).showAndWait()
+                    );
                 }
             });
 
@@ -484,11 +494,13 @@ public class Main extends Application {
                 return null;
             });
             Optional<Prestataire> res = d.showAndWait();
-            res.ifPresent(p -> runAsync(() -> {
-                if(src==null) dao.add(p.copyWithoutId());
-                else dao.update(p);
-                return null;
-            }, () -> refresh(search.getText())));
+            res.ifPresent(p -> runAsync(
+                () -> {
+                    if(src==null) dao.add(p.copyWithoutId());
+                    else dao.update(p);
+                },
+                () -> refresh(search.getText())
+            ));
         }
 
         /*=====================  Dialogues secondaires  ===================*/
@@ -500,7 +512,7 @@ public class Main extends Application {
             td.setHeaderText("Description du service");
             td.showAndWait().ifPresent(desc->{
                 if(!desc.isBlank())
-                    runAsync(() -> { dao.addService(p.getId(), desc); return null; }, null);
+                    runAsync(() -> dao.addService(p.getId(), desc), null);
             });
         }
 
