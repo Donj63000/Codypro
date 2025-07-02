@@ -166,9 +166,9 @@ public class MainView {
                 Path f = Optional.ofNullable(fc.showSaveDialog(stage)).map(java.io.File::toPath).orElse(null);
                 if (f != null) {
                     runAsync(() -> {
-                        PDF.generateFiche(f, p);
-                        return null;
-                    }, () -> new Alert(Alert.AlertType.INFORMATION, "Fiche PDF exportée", ButtonType.OK).showAndWait());
+                    PDF.generateFiche(f, p);
+                    return null;
+                    }, v -> new Alert(Alert.AlertType.INFORMATION, "Fiche PDF exportée", ButtonType.OK).showAndWait());
                 }
             }
         });
@@ -181,7 +181,7 @@ public class MainView {
                 runAsync(() -> {
                     PDF.generateHistorique(f, dao);
                     return null;
-                }, () -> new Alert(Alert.AlertType.INFORMATION, "Historique PDF exporté", ButtonType.OK).showAndWait());
+                }, v -> new Alert(Alert.AlertType.INFORMATION, "Historique PDF exporté", ButtonType.OK).showAndWait());
             }
         });
 
