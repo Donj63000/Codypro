@@ -1,4 +1,4 @@
-package com.rochias.prestamgr;
+package org.example;
 
 import javafx.application.Application;
 import javafx.beans.property.*;
