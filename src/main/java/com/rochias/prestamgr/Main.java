@@ -261,6 +261,26 @@ public class Main extends Application {
         private final TextField targetField = new TextField("0.95");
         private final Label fightsOut = new Label();
 
+        // exécute un travail en arrière-plan et met à jour l'UI à la fin
+        private <T> void runAsync(java.util.concurrent.Callable<T> work,
+                                  java.util.function.Consumer<T> ui)
+        {
+            javafx.concurrent.Task<T> task = new javafx.concurrent.Task<>() {
+                @Override protected T call() throws Exception { return work.call(); }
+            };
+            task.setOnSucceeded(ev -> javafx.application.Platform.runLater(() -> ui.accept(task.getValue())));
+            task.setOnFailed(ev -> {
+                Throwable ex = task.getException();
+                if(ex!=null) ex.printStackTrace();
+                javafx.application.Platform.runLater(() -> alert(ex==null?"Erreur" : ex.getMessage()));
+            });
+            new Thread(task, "gui-bg").start();
+        }
+
+        private void runAsync(Runnable work, Runnable ui){
+            runAsync(() -> { work.run(); return null; }, v -> { if(ui!=null) ui.run(); });
+        }
+
         GUI(Stage stage, DB dao) {
             this.dao = dao;
             buildLayout(stage);
@@ -306,8 +326,10 @@ public class Main extends Application {
         }
 
         private void refresh(String filtre) {
-            table.setItems(FXCollections.observableArrayList(dao.list(filtre)));
-            updateDetails(null);
+            runAsync(() -> dao.list(filtre), list -> {
+                table.setItems(FXCollections.observableArrayList(list));
+                updateDetails(null);
+            });
         }
 
         /*----------------------  Détails Prestataire  ------------------*/
@@ -362,16 +384,35 @@ public class Main extends Application {
             bDel.setOnAction(e->{
                 Prestataire p = table.getSelectionModel().getSelectedItem();
                 if(p!=null && confirm("Supprimer "+p.getNom()+" ?")){
-                    dao.delete(p.getId()); refresh(search.getText());
+                    runAsync(() -> { dao.delete(p.getId()); return null; },
+                             () -> refresh(search.getText()));
                 }
             });
             bService.setOnAction(e->addServiceDialog());
             bHist.setOnAction(e->showHistoryDialog());
             bPDF.setOnAction(e->{
                 Prestataire p = table.getSelectionModel().getSelectedItem();
-                if(p!=null) PDF.fiche(stage, p);
+                if(p!=null){
+                    FileChooser fc = new FileChooser();
+                    fc.setInitialFileName(p.getNom()+"_fiche.pdf");
+                    fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF","*.pdf"));
+                    Path f = Optional.ofNullable(fc.showSaveDialog(stage)).map(java.io.File::toPath).orElse(null);
+                    if(f!=null){
+                        runAsync(() -> { PDF.generateFiche(f, p); return null; },
+                                () -> new Alert(Alert.AlertType.INFORMATION,"Fiche PDF exportée",ButtonType.OK).showAndWait());
+                    }
+                }
             });
-            bPDFAll.setOnAction(e->PDF.historiqueGlobal(stage, dao));
+            bPDFAll.setOnAction(e->{
+                FileChooser fc = new FileChooser();
+                fc.setInitialFileName("Historique_global_prestataires.pdf");
+                fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF","*.pdf"));
+                Path f = Optional.ofNullable(fc.showSaveDialog(stage)).map(java.io.File::toPath).orElse(null);
+                if(f!=null){
+                    runAsync(() -> { PDF.generateHistorique(f, dao); return null; },
+                            () -> new Alert(Alert.AlertType.INFORMATION,"Historique PDF exporté",ButtonType.OK).showAndWait());
+                }
+            });
 
             HBox hb = new HBox(8,bAdd,bEdit,bDel,bService,bHist,bPDF,bPDFAll);
             hb.setPadding(new Insets(10));
@@ -440,11 +481,11 @@ public class Main extends Application {
                 return null;
             });
             Optional<Prestataire> res = d.showAndWait();
-            res.ifPresent(p->{
+            res.ifPresent(p -> runAsync(() -> {
                 if(src==null) dao.add(p.copyWithoutId());
                 else dao.update(p);
-                refresh(search.getText());
-            });
+                return null;
+            }, () -> refresh(search.getText())));
         }
 
         /*=====================  Dialogues secondaires  ===================*/
@@ -455,7 +496,8 @@ public class Main extends Application {
             td.setTitle("Nouveau service");
             td.setHeaderText("Description du service");
             td.showAndWait().ifPresent(desc->{
-                if(!desc.isBlank()) dao.addService(p.getId(), desc);
+                if(!desc.isBlank())
+                    runAsync(() -> { dao.addService(p.getId(), desc); return null; }, null);
             });
         }
 
@@ -465,11 +507,14 @@ public class Main extends Application {
             Stage win = new Stage();
             win.setTitle("Historique — "+p.getNom());
             VBox vb = new VBox(6); vb.setPadding(new Insets(10));
-            dao.services(p.getId()).forEach(sr->vb.getChildren()
-                    .add(new Label(sr.date()+" — "+sr.desc())));
+            vb.getChildren().add(new Label("Chargement..."));
             win.setScene(new Scene(new ScrollPane(vb),400,400));
             win.initModality(Modality.WINDOW_MODAL);
             win.show();
+            runAsync(() -> dao.services(p.getId()), list -> {
+                vb.getChildren().clear();
+                list.forEach(sr->vb.getChildren().add(new Label(sr.date()+" — "+sr.desc())));
+            });
         }
 
         /*=========================  Drop Calc  ===========================*/
@@ -541,18 +586,8 @@ public class Main extends Application {
             Path file = Optional.ofNullable(fc.showSaveDialog(owner)).map(java.io.File::toPath).orElse(null);
             if(file==null) return;
 
-            try(Document doc = new Document()){
-                PdfWriter.getInstance(doc, new FileOutputStream(file.toFile()));
-                doc.open();
-                doc.add(new Paragraph("Fiche Prestataire — "+p.getNom(), FontFactory.getFont(FontFactory.HELVETICA_BOLD,18)));
-                doc.add(new Paragraph("\n"));
-                doc.add(new Paragraph("Société      : "+p.getSociete()));
-                doc.add(new Paragraph("Téléphone   : "+p.getTelephone()));
-                doc.add(new Paragraph("Email       : "+p.getEmail()));
-                doc.add(new Paragraph("Note        : "+p.getNote()+" %"));
-                doc.add(new Paragraph("Facturation : "+p.getFacturation()));
-                doc.add(new Paragraph("Date contrat: "+p.getDateContrat()));
-                doc.close();
+            try {
+                generateFiche(file, p);
                 info("Fiche PDF exportée.");
             }catch(Exception e){ error(e.getMessage()); }
         }
@@ -564,24 +599,46 @@ public class Main extends Application {
             Path file = Optional.ofNullable(fc.showSaveDialog(owner)).map(java.io.File::toPath).orElse(null);
             if(file==null) return;
 
+            try {
+                generateHistorique(file, dao);
+                info("Historique PDF exporté.");
+            }catch(Exception e){ error(e.getMessage()); }
+        }
+        static void generateFiche(java.nio.file.Path file, Prestataire p) throws Exception {
             try(Document doc = new Document()){
                 PdfWriter.getInstance(doc, new FileOutputStream(file.toFile()));
                 doc.open();
-                doc.add(new Paragraph("Historique des contrats et services", FontFactory.getFont(FontFactory.HELVETICA_BOLD,18)));
+                doc.add(new Paragraph("Fiche Prestataire — "+p.getNom(),
+                        FontFactory.getFont(FontFactory.HELVETICA_BOLD,18)));
+                doc.add(new Paragraph("\n"));
+                doc.add(new Paragraph("Société     : "+p.getSociete()));
+                doc.add(new Paragraph("Téléphone   : "+p.getTelephone()));
+                doc.add(new Paragraph("Email       : "+p.getEmail()));
+                doc.add(new Paragraph("Note        : "+p.getNote()+" %"));
+                doc.add(new Paragraph("Facturation : "+p.getFacturation()));
+                doc.add(new Paragraph("Date contrat: "+p.getDateContrat()));
+                doc.close();
+            }
+        }
+
+        static void generateHistorique(java.nio.file.Path file, DB dao) throws Exception {
+            try(Document doc = new Document()){
+                PdfWriter.getInstance(doc, new FileOutputStream(file.toFile()));
+                doc.open();
+                doc.add(new Paragraph("Historique des contrats et services",
+                        FontFactory.getFont(FontFactory.HELVETICA_BOLD,18)));
                 doc.add(new Paragraph("\n"));
                 dao.list("").forEach(p-> dao.services(p.getId()).forEach(sr->{
                     try{ doc.add(new Paragraph(sr.date()+" — "+p.getNom()+" ("+p.getSociete()+") : "+sr.desc())); }
-                    catch(DocumentException e){throw new RuntimeException(e);}
+                    catch(DocumentException e){ throw new RuntimeException(e); }
                 }));
                 doc.close();
-                info("Historique PDF exporté.");
-            }catch(Exception e){ error(e.getMessage()); }
+            }
         }
 
         private static void info(String m){ new Alert(Alert.AlertType.INFORMATION,m,ButtonType.OK).showAndWait(); }
         private static void error(String m){ new Alert(Alert.AlertType.ERROR,m,ButtonType.OK).showAndWait(); }
-    }
-
+        }
     /*======================================================================*/
     /*=====================      ENVOI  MAIL        ========================*/
     /*======================================================================*/
