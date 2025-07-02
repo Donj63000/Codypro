@@ -15,13 +15,11 @@ import javafx.stage.Stage;
 import java.io.FileOutputStream;
 import java.nio.file.Path;
 import java.sql.*;
-import java.text.DecimalFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+// plus de calcul de drop : imports ci-dessus supprimés
 
 import com.lowagie.text.Document;
 import com.lowagie.text.DocumentException;
@@ -258,11 +256,7 @@ public class Main extends Application {
         private final Label[] detailLabels = new Label[7];
         private final ProgressBar noteBar = new ProgressBar(0);
 
-        // DropCalc fields
-        private final TextField baseRateField = new TextField("0.05");
-        private final TextField ppField = new TextField("100,120,80");
-        private final TextField targetField = new TextField("0.95");
-        private final Label fightsOut = new Label();
+        // (champ inutiles supprimés – plus de Drop Calculator)
 
         // exécute un travail en arrière-plan et met à jour l'UI à la fin
         private <T> void runAsync(java.util.concurrent.Callable<T> work,
@@ -350,10 +344,7 @@ public class Main extends Application {
             }
             noteBar.setPrefWidth(200);
             v.getChildren().add(noteBar);
-
-            v.getChildren().add(new Separator());
-            v.getChildren().add(buildDropCalcPane());
-            return v;
+            return v;         // plus de Drop Calculator
         }
 
         private void updateDetails(Prestataire p){
@@ -532,63 +523,14 @@ public class Main extends Application {
             });
         }
 
-        /*=========================  Drop Calc  ===========================*/
-        private VBox buildDropCalcPane(){
-            // Restricteurs :
-            UnaryOperator<TextFormatter.Change> numFilter = c->{
-                if(c.getControlNewText().matches("[0-9.,\\s-]*")) return c; return null;
-            };
-            baseRateField.setTextFormatter(new TextFormatter<>(numFilter));
-            ppField.setTextFormatter(new TextFormatter<>(numFilter));
-            targetField.setTextFormatter(new TextFormatter<>(numFilter));
-
-            Button compute = new Button("Calculer");
-            compute.setOnAction(e->computeDrop());
-
-            GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(4);
-            gp.addRow(0,new Label("Taux base :"),baseRateField);
-            gp.addRow(1,new Label("PP (%) :"),ppField);
-            gp.addRow(2,new Label("Cible cumulée :"),targetField);
-            gp.addRow(3,compute,fightsOut);
-            return new VBox(new Label("—  Drop Calculator  —"),gp);
-        }
-
-        private void computeDrop(){
-            try{
-                double base = Double.parseDouble(baseRateField.getText().replace(',','.'));
-                double[] pps = Arrays.stream(ppField.getText().split("[,\\s]+"))
-                                     .filter(s->!s.isBlank())
-                                     .mapToDouble(Double::parseDouble).toArray();
-                double target = Double.parseDouble(targetField.getText().replace(',','.'));
-
-                double pFight = Stats.groupProb(base, pps);
-                int fights   = Stats.fightsNeeded(target, pFight);
-                DecimalFormat df = new DecimalFormat("#.####");
-
-                fightsOut.setText("P/fight = "+df.format(pFight*100)+" %\nCombats ≈ "+fights);
-            }catch(Exception e){ alert("Entrées numériques invalides."); }
-        }
+        // (méthodes buildDropCalcPane & computeDrop supprimées)
 
         /*=========================  Utils GUI  ==========================*/
         private boolean confirm(String msg){ return new Alert(Alert.AlertType.CONFIRMATION,msg,ButtonType.YES,ButtonType.NO).showAndWait().orElse(ButtonType.NO)==ButtonType.YES; }
         private void alert(String msg){ new Alert(Alert.AlertType.ERROR,msg,ButtonType.OK).showAndWait(); }
     }
 
-    /*======================================================================*/
-    /*=====================          STATS          ========================*/
-    /*======================================================================*/
-    static class Stats {
-        static double indivProb(double base, double pp){ return Math.max(0, Math.min(1, base*pp/100.0)); }
-        static double groupProb(double base, double... pps){
-            double invProd = 1.0;
-            for (double pp:pps) invProd *= 1 - indivProb(base, pp);
-            return 1 - invProd;
-        }
-        static int fightsNeeded(double target, double pFight){
-            if(pFight<=0) return Integer.MAX_VALUE;
-            return (int)Math.ceil(Math.log(1-target)/Math.log(1-pFight));
-        }
-    }
+    // (classe Stats entièrement supprimée)
 
     /*======================================================================*/
     /*=====================          PDF            ========================*/
