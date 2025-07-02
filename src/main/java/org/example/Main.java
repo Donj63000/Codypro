@@ -30,19 +30,7 @@ import jakarta.mail.*;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 
-/**
- * ============================================================================
- *  Gestion des Prestataires + Drop Calculator
- *  --------------------------------------------------------------------------
- *  - CRUD SQLite
- *  - Exports PDF (fiche & historique)
- *  - Envoi Mail (SMTP/SSL)
- *  - JavaFX GUI (TableView + dialogs)
- *  - Drop Calculator (probas cumulées)
- * ============================================================================
- *  Auteur  : Dév interne – Rochias
- *  Contact : valentin.gidon@rochias.fr
- * ============================================================================
+
  */
 public class Main extends Application {
 
