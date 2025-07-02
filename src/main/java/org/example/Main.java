@@ -30,7 +30,20 @@ import jakarta.mail.*;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 
-
+/**
+ * ============================================================================
+ *  Gestion des Prestataires + Drop Calculator
+ *  --------------------------------------------------------------------------
+ *  - CRUD SQLite
+ *  - Exports PDF (fiche & historique)
+ *  - Envoi Mail (SMTP/SSL)
+ *  - JavaFX GUI (TableView + dialogs)
+ *  - Drop Calculator (probas cumulées)
+ * ============================================================================
+ *  Auteur  : Dév interne – Rochias
+ *  Contact : valentin.gidon@rochias.fr
+ * ============================================================================
+ */
 public class Main extends Application {
 
     /*------------------------------------------------------------------------*
@@ -55,7 +68,7 @@ public class Main extends Application {
     public void start(Stage primaryStage) {
         dao = new DB(DB_FILE);
         GUI gui = new GUI(primaryStage, dao);
-        primaryStage.setTitle("Gestion des Prestataires — cody");
+        primaryStage.setTitle("Gestion des Prestataires — Rochias");
         primaryStage.setScene(new Scene(gui.root, 920, 600));
         primaryStage.show();
     }
