@@ -212,7 +212,7 @@ public class Main extends Application {
     /*======================================================================*/
     record ServiceRow(String desc, String date) { }
 
-    static class Prestataire {
+    public static class Prestataire {
         private final IntegerProperty id = new SimpleIntegerProperty();
         private final StringProperty nom = new SimpleStringProperty();
         private final StringProperty societe = new SimpleStringProperty();
@@ -229,15 +229,25 @@ public class Main extends Application {
         }
 
         // ---- getters/setters simplifiés
-        int getId(){return id.get();}
-        String getNom(){return nom.get();}
-        void setNom(String s){nom.set(s);}
-        String getSociete(){return societe.get();}
-        String getTelephone(){return telephone.get();}
-        String getEmail(){return email.get();}
-        int getNote(){return note.get();}
-        String getFacturation(){return facturation.get();}
-        String getDateContrat(){return dateContrat.get();}
+        public int getId(){return id.get();}
+        public String getNom(){return nom.get();}
+        public void setNom(String s){nom.set(s);}
+        public String getSociete(){return societe.get();}
+        public String getTelephone(){return telephone.get();}
+        public String getEmail(){return email.get();}
+        public int getNote(){return note.get();}
+        public String getFacturation(){return facturation.get();}
+        public String getDateContrat(){return dateContrat.get();}
+
+        // ---- JavaFX properties (facilite les bindings)
+        public IntegerProperty idProperty()        { return id; }
+        public StringProperty  nomProperty()       { return nom; }
+        public StringProperty  societeProperty()   { return societe; }
+        public StringProperty  telephoneProperty() { return telephone; }
+        public StringProperty  emailProperty()     { return email; }
+        public IntegerProperty noteProperty()      { return note; }
+        public StringProperty  facturationProperty(){ return facturation; }
+        public StringProperty  dateContratProperty(){ return dateContrat; }
 
         /* util clone sans ID (formulaire create) */
         Prestataire copyWithoutId(){ return new Prestataire(0,getNom(),getSociete(),getTelephone(),getEmail(),getNote(),getFacturation(),getDateContrat()); }
