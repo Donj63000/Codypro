@@ -9,6 +9,7 @@ import org.example.gui.MainView;
 public class MainApp extends Application {
     private static final String DB_FILE = "prestataires.db";
     private DB dao;
+    private MainView view;
 
     public static void main(String[] args) {
         launch(args);
@@ -17,7 +18,7 @@ public class MainApp extends Application {
     @Override
     public void start(Stage primaryStage) {
         dao = new DB(DB_FILE);
-        MainView view = new MainView(primaryStage, dao);
+        view = new MainView(primaryStage, dao);
         primaryStage.setTitle("Gestion des Prestataires");
         primaryStage.setScene(new Scene(view.getRoot(), 920, 600));
         primaryStage.show();
@@ -25,8 +26,7 @@ public class MainApp extends Application {
 
     @Override
     public void stop() {
-        if (dao != null) {
-            dao.close();
-        }
+        if (dao != null) dao.close();
+        if (view != null) view.shutdownExecutor();
     }
 }

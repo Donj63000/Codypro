@@ -209,25 +209,17 @@ public class MainView {
 
         for (int i = 0; i < lab.length; i++) {
             gp.add(new Label(lab[i] + "  :"), 0, i);
-            fields[i] = new TextField(src == null ? "" : switch (i) {
-                case 0 -> "";
-                case 1 -> "";
-                case 2 -> "";
-                case 3 -> "";
-                case 4 -> "0";
-                case 5 -> "";
-                default -> DATE_FR.format(LocalDate.now());
-            });
+            fields[i] = new TextField();
+            switch (i) {
+                case 0 -> fields[i].setText(src == null ? "" : src.getNom());
+                case 1 -> fields[i].setText(src == null ? "" : src.getSociete());
+                case 2 -> fields[i].setText(src == null ? "" : src.getTelephone());
+                case 3 -> fields[i].setText(src == null ? "" : src.getEmail());
+                case 4 -> fields[i].setText(src == null ? "0" : String.valueOf(src.getNote()));
+                case 5 -> fields[i].setText(src == null ? "" : src.getFacturation());
+                case 6 -> fields[i].setText(src == null ? DATE_FR.format(LocalDate.now()) : src.getDateContrat());
+            }
             gp.add(fields[i], 1, i);
-        }
-        if (src != null) {
-            fields[0].setText(src.getNom());
-            fields[1].setText(src.getSociete());
-            fields[2].setText(src.getTelephone());
-            fields[3].setText(src.getEmail());
-            fields[4].setText("" + src.getNote());
-            fields[5].setText(src.getFacturation());
-            fields[6].setText(src.getDateContrat());
         }
         d.getDialogPane().setContent(gp);
 
@@ -240,7 +232,9 @@ public class MainView {
                     throw new IllegalArgumentException("Email invalide.");
                 int note = Integer.parseInt(fields[4].getText());
                 if (note < 0 || note > 100) throw new IllegalArgumentException("Note 0-100.");
-                LocalDate.parse(fields[6].getText(), DATE_FR);
+                String dateStr = fields[6].getText().trim();
+                if (dateStr.isEmpty()) throw new IllegalArgumentException("Date obligatoire.");
+                LocalDate.parse(dateStr, DATE_FR);
             } catch (Exception e) {
                 alert(e.getMessage());
                 ev.consume();
@@ -310,5 +304,9 @@ public class MainView {
 
     private void alert(String msg) {
         new Alert(Alert.AlertType.ERROR, msg, ButtonType.OK).showAndWait();
+    }
+
+    public void shutdownExecutor() {
+        executor.shutdownNow();
     }
 }
