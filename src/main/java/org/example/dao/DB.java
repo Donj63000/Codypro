@@ -9,7 +9,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
-public class DB {
+public class DB implements AutoCloseable {
     private static final DateTimeFormatter DATE_FR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private final Connection conn;
 
@@ -48,6 +48,7 @@ public class DB {
         }
     }
 
+    @Override
     public void close() {
         try {
             conn.close();
