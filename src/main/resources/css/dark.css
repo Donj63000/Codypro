@@ -1,34 +1,97 @@
-/* Application dark theme */
+/*======================================================================
+  Thème sombre – Rochias Prestataires (v2)
+  Palette : #202123 base | #2b2c2f surface | #3e3f42 surface+1
+            #10a37f accent | #e6e6e6 txt | #7c7c7d txt-sec
+======================================================================*/
 
-/* Palette inspirée de chat.openai.com */
+/* ---------------- FONTS ------------------------------------------- */
+@font-face {
+    font-family: "Inter";
+    src: url("../fonts/Inter-Regular.ttf");
+}
+
 .root {
-    -fx-base: #202123;
-    -fx-background: #202123;
+    -fx-font-family: "Inter", "Segoe UI", sans-serif;
+    -fx-font-size: 13px;
+
+    -fx-base:                   #202123;
+    -fx-background:             #202123;
     -fx-control-inner-background: #2b2c2f;
-    -fx-accent: #10a37f;
-    -fx-focus-color: #10a37f;
-    -fx-faint-focus-color: transparent;
-    -fx-text-fill: #e6e6e6;
+
+    -fx-accent:                 #10a37f;
+    -fx-focus-color:            #10a37f;
+    -fx-faint-focus-color:      transparent;
+
+    -fx-text-fill:              #e6e6e6;
 }
 
-.label { -fx-text-fill: #e6e6e6; }
-.table-view, .list-view {
-    -fx-background-color: #2b2c2f;
-    -fx-table-cell-border-color: #3e3f42;
-}
-.table-row-cell:filled:selected, .list-cell:filled:selected {
-    -fx-background-color: #3e4a54;
-}
+/* ---------------- TEXT & LABELS ----------------------------------- */
+.label            { -fx-text-fill: #e6e6e6; }
+.label.title      { -fx-font-size: 17px; -fx-font-weight: bold; }
+.label.caption    { -fx-text-fill: #7c7c7d; -fx-font-size: 11px; }
 
+/* ---------------- BUTTONS ----------------------------------------- */
 .button {
     -fx-background-radius: 4;
     -fx-background-color: #3e3f42;
     -fx-text-fill: #e6e6e6;
+    -fx-padding: 6 12 6 12;
 }
-.button:hover {
-    -fx-background-color: #4f5054;
+.button:hover     { -fx-background-color: derive(#3e3f42, +10%); }
+.button:pressed   { -fx-background-color: derive(#3e3f42, -10%); }
+
+/* bouton primaire (“accent”) */
+.button.accent          { -fx-background-color: #10a37f; }
+.button.accent:hover    { -fx-background-color: derive(#10a37f, +10%); }
+.button.accent:pressed  { -fx-background-color: derive(#10a37f, -10%); }
+
+/* ---------------- TEXT INPUT -------------------------------------- */
+.text-field,
+.text-area,
+.date-picker > .text-field {
+    -fx-background-color: #2b2c2f ;
+    -fx-text-fill:        #e6e6e6 ;
+    -fx-border-color:     #3e3f42 ;
+}
+.text-field:focused,
+.date-picker:focused > .text-field {
+    -fx-border-color: #10a37f ;
 }
 
-/* --- états payé / impayé ----------------------------------------- */
-.cell-paid   { -fx-text-fill: #10a37f; }   /* vert ChatGPT */
-.cell-unpaid { -fx-text-fill: #e74c3c; }   /* rouge */
+/* ---------------- TABLEVIEW --------------------------------------- */
+.table-view {
+    -fx-background-color: #2b2c2f ;
+    -fx-table-cell-border-color: #3e3f42 ;
+}
+.table-view .column-header-background {
+    -fx-background-color: #2b2c2f ;
+}
+.table-view .column-header,
+.table-view .filler {
+    -fx-size: 30px ;
+    -fx-border-color: transparent transparent #3e3f42 transparent ;
+}
+.table-view .column-header .label {
+    -fx-text-fill: #e6e6e6 ;
+    -fx-font-weight: bold ;
+}
+.table-row-cell:filled:selected,
+.list-cell:filled:selected {
+    -fx-background-color: #3e4a54 ;
+}
+
+/* icônes ✓ / ✗ (Unicode) */
+.cell-paid   { -fx-text-fill: #10a37f; }
+.cell-unpaid { -fx-text-fill: #e74c3c; }
+
+/* ---------------- SCROLLBAR --------------------------------------- */
+.scroll-bar:vertical,
+.scroll-bar:horizontal { -fx-background-color: transparent; }
+
+.scroll-bar .thumb {
+    -fx-background-color: #4f5054;
+    -fx-background-radius: 4;
+}
+.scroll-bar .thumb:hover {
+    -fx-background-color: derive(#4f5054, +10%);
+}
