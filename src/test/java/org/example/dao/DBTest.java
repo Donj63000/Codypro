@@ -57,4 +57,11 @@ public class DBTest {
         assertTrue(db.list("").isEmpty());
         assertTrue(db.services(id).isEmpty());
     }
+
+    @Test
+    void testAncienFormatCompatible() {
+        Prestataire p = new Prestataire(0, "Nom", "S", "0", "a@b.com", 50, "F", "23/09/2025");
+        db.add(p);
+        assertEquals("23/09/2025", db.list("").get(0).getDateContrat());
+    }
 }
