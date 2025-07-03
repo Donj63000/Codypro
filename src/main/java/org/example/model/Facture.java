@@ -32,6 +32,8 @@ public class Facture {
     public double getMontant(){return montant.get();}
     public boolean isPaye(){return paye.get();}
     public LocalDate getDatePaiement(){return datePaiement.get();}
+    public String getEcheanceFr() { return echeanceFr(); }
+    public String getDatePaiementFr() { return datePaiementFr(); }
 
     /* ----- helper d’affichage ----- */
     public String echeanceFr(){ return FR.format(getEcheance()); }
