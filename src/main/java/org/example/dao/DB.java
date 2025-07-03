@@ -45,6 +45,26 @@ public class DB implements AutoCloseable {
                         );
                         """);
             }
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS factures (
+                            id INTEGER PRIMARY KEY,
+                            prestataire_id INTEGER NOT NULL
+                                REFERENCES prestataires(id) ON DELETE CASCADE,
+                            description TEXT,
+                            echeance TEXT NOT NULL,
+                            montant_ht REAL NOT NULL,
+                            paye INTEGER NOT NULL DEFAULT 0,
+                            date_paiement TEXT
+                        );
+                        """);
+            }
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("""
+                        CREATE INDEX IF NOT EXISTS idx_factures_prestataire
+                        ON factures(prestataire_id, paye);
+                        """);
+            }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
