@@ -2,6 +2,7 @@ package org.example.dao;
 
 import org.example.model.Prestataire;
 import org.example.model.ServiceRow;
+import org.example.model.Facture;
 
 import java.sql.*;
 import java.time.LocalDate;
@@ -168,6 +169,67 @@ public class DB implements AutoCloseable {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /* =========================== Factures =========================== */
+
+    public void addFacture(Facture f) {
+        String sql = "INSERT INTO factures(prestataire_id,description,echeance,montant_ht,paye,date_paiement) VALUES(?,?,?,?,?,?)";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, f.getPrestataireId());
+            ps.setString(2, f.getDescription());
+            ps.setString(3, f.getEcheance().format(DATE_DB));
+            ps.setDouble(4, f.getMontant());
+            ps.setInt(5, f.isPaye() ? 1 : 0);
+            LocalDate dp = f.getDatePaiement();
+            if (dp == null) ps.setNull(6, Types.VARCHAR);
+            else ps.setString(6, dp.format(DATE_DB));
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void setFacturePayee(int id, boolean payee) {
+        String sql = "UPDATE factures SET paye=?,date_paiement=? WHERE id=?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, payee ? 1 : 0);
+            if (payee) ps.setString(2, LocalDate.now().format(DATE_DB));
+            else ps.setNull(2, Types.VARCHAR);
+            ps.setInt(3, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public List<Facture> factures(int pid, Boolean payee) {
+        String sql = "SELECT * FROM factures WHERE prestataire_id=? " + (payee == null ? "" : "AND paye=? ") + "ORDER BY echeance";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            int idx = 1;
+            ps.setInt(idx++, pid);
+            if (payee != null) ps.setInt(idx++, payee ? 1 : 0);
+            ResultSet rs = ps.executeQuery();
+            List<Facture> out = new ArrayList<>();
+            while (rs.next()) out.add(rowToFacture(rs));
+            return out;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static Facture rowToFacture(ResultSet rs) throws SQLException {
+        LocalDate ech = parseAny(rs.getString("echeance"));
+        LocalDate dp = parseAny(rs.getString("date_paiement"));
+        return new Facture(
+                rs.getInt("id"),
+                rs.getInt("prestataire_id"),
+                rs.getString("description"),
+                ech,
+                rs.getDouble("montant_ht"),
+                rs.getInt("paye") != 0,
+                dp
+        );
     }
 
     private static Prestataire rowToPrestataire(ResultSet rs) throws SQLException {

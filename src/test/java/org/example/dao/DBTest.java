@@ -2,6 +2,7 @@ package org.example.dao;
 
 import org.example.model.Prestataire;
 import org.example.model.ServiceRow;
+import org.example.model.Facture;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -63,5 +64,26 @@ public class DBTest {
         Prestataire p = new Prestataire(0, "Nom", "S", "0", "a@b.com", 50, "F", "23/09/2025");
         db.add(p);
         assertEquals("23/09/2025", db.list("").get(0).getDateContrat());
+    }
+
+    @Test
+    void testFactures() {
+        Prestataire p = createSample();
+        db.add(p);
+        int pid = db.list("").get(0).getId();
+
+        Facture f = new Facture(0, pid, "Test", LocalDate.now(), 100.0, false, null);
+        db.addFacture(f);
+
+        List<Facture> all = db.factures(pid, null);
+        assertEquals(1, all.size());
+        Facture stored = all.get(0);
+        assertFalse(stored.isPaye());
+
+        db.setFacturePayee(stored.getId(), true);
+        all = db.factures(pid, true);
+        assertEquals(1, all.size());
+        assertTrue(all.get(0).isPaye());
+        assertNotNull(all.get(0).getDatePaiement());
     }
 }
