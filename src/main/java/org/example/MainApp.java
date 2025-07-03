@@ -20,7 +20,9 @@ public class MainApp extends Application {
         dao = new DB(DB_FILE);
         view = new MainView(primaryStage, dao);
         primaryStage.setTitle("Gestion des Prestataires");
-        primaryStage.setScene(new Scene(view.getRoot(), 920, 600));
+        Scene sc = new Scene(view.getRoot(), 920, 600);
+        sc.getStylesheets().add(getClass().getResource("/css/dark.css").toExternalForm());
+        primaryStage.setScene(sc);
         primaryStage.show();
     }
 
