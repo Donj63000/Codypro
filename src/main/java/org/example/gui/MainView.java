@@ -12,6 +12,7 @@ import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import org.example.dao.DB;
+import org.example.model.Facture;
 import org.example.model.Prestataire;
 import org.example.pdf.PDF;
 
@@ -149,6 +150,7 @@ public class MainView {
         Button bDel = new Button("Supprimer");
         Button bService = new Button("Ajout service");
         Button bHist = new Button("Historique");
+        Button bFact = new Button("Factures");
         Button bPDF = new Button("Fiche PDF");
         Button bPDFAll = new Button("PDF global");
 
@@ -162,6 +164,7 @@ public class MainView {
         });
         bService.setOnAction(e -> addServiceDialog());
         bHist.setOnAction(e -> showHistoryDialog());
+        bFact.setOnAction(e -> showFacturesDialog());
         bPDF.setOnAction(e -> {
             Prestataire p = table.getSelectionModel().getSelectedItem();
             if (p != null) {
@@ -190,7 +193,7 @@ public class MainView {
             }
         });
 
-        HBox hb = new HBox(8, bAdd, bEdit, bDel, bService, bHist, bPDF, bPDFAll);
+        HBox hb = new HBox(8, bAdd, bEdit, bDel, bService, bHist, bFact, bPDF, bPDFAll);
         hb.setPadding(new Insets(10));
         return hb;
     }
@@ -295,6 +298,105 @@ public class MainView {
             vb.getChildren().clear();
             list.forEach(sr -> vb.getChildren().add(new Label(sr.date() + " — " + sr.desc())));
         });
+    }
+
+    private void showFacturesDialog(){
+        Prestataire p = table.getSelectionModel().getSelectedItem();
+        if(p==null){ alert("Sélectionnez un prestataire."); return; }
+
+        Stage win = new Stage();
+        win.setTitle("Factures — "+p.getNom());
+
+        /* ====== TableView ====== */
+        TableView<Facture> tv = new TableView<>();
+        tv.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        tv.getColumns().addAll(
+            col("Échéance","echeanceFr"),
+            col("Description","description"),
+            col("Montant","montant"),
+            col("Réglée","paye"),
+            col("Date paiement","datePaiementFr")
+        );
+        tv.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
+        tv.setRowFactory(tb -> {
+            TableRow<Facture> row = new TableRow<>();
+            row.setOnMouseClicked(ev -> {
+                if(ev.getClickCount()==2 && !row.isEmpty()){
+                    Facture f = row.getItem();
+                    runAsync(() -> dao.setFacturePayee(f.getId(), !f.isPaye()),
+                             () -> refreshFactures(p, tv));
+                }
+            });
+            return row;
+        });
+
+        /* ====== boutons ====== */
+        Button bAdd = new Button("Nouvelle facture");
+        Button bToggle = new Button("Marquer réglée / attente");
+        Button bClose = new Button("Fermer");
+
+        bAdd.setOnAction(ev -> addFactureDialog(p, tv));
+        bToggle.setOnAction(ev -> {
+            Facture f = tv.getSelectionModel().getSelectedItem();
+            if(f!=null){
+                runAsync(() -> dao.setFacturePayee(f.getId(), !f.isPaye()),
+                         () -> refreshFactures(p, tv));
+            }
+        });
+        bClose.setOnAction(ev -> win.close());
+
+        HBox buttons = new HBox(10,bAdd,bToggle,bClose);
+        buttons.setPadding(new Insets(10));
+
+        VBox root = new VBox(10, tv, buttons);
+        root.setPadding(new Insets(10));
+        win.setScene(new Scene(root, 600, 400));
+        win.initModality(Modality.WINDOW_MODAL);
+        win.show();
+
+        /* charge les données */
+        refreshFactures(p, tv);
+    }
+
+    /* Helpers */
+    private TableColumn<Facture,?> col(String title,String prop){
+        TableColumn<Facture,?> c = new TableColumn<>(title);
+        c.setCellValueFactory(new PropertyValueFactory<>(prop));
+        return c;
+    }
+    private void refreshFactures(Prestataire p, TableView<Facture> tv){
+        runAsync(() -> dao.factures(p.getId(), null),
+                 list -> tv.setItems(FXCollections.observableArrayList(list)));
+    }
+
+    private void addFactureDialog(Prestataire p, TableView<Facture> tv){
+        Dialog<Facture> d = new Dialog<>();
+        d.setTitle("Nouvelle facture – "+p.getNom());
+        d.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(8);
+        DatePicker dpEch = new DatePicker(LocalDate.now());
+        TextField tfDesc = new TextField();
+        TextField tfMont = new TextField("0");
+
+        gp.addRow(0,new Label("Échéance :"), dpEch);
+        gp.addRow(1,new Label("Description :"), tfDesc);
+        gp.addRow(2,new Label("Montant HT (€) :"), tfMont);
+
+        d.getDialogPane().setContent(gp);
+
+        d.setResultConverter(bt -> {
+            if(bt==ButtonType.OK){
+                return new Facture(0,p.getId(),tfDesc.getText(),
+                                   dpEch.getValue(),
+                                   Double.parseDouble(tfMont.getText()),
+                                   false,null);
+            }
+            return null;
+        });
+        d.showAndWait().ifPresent(f ->
+            runAsync(() -> dao.addFacture(f),
+                     () -> refreshFactures(p, tv)));
     }
 
     private boolean confirm(String msg) {
