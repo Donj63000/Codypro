@@ -3,6 +3,7 @@ package org.example.gui;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -132,7 +133,8 @@ public class MainView {
     }
 
     private VBox buildDetailPane(Stage stage) {
-        VBox v = new VBox(8);
+        VBox v = new VBox(10);
+        v.setId("detail-pane");
         v.setPadding(new Insets(10));
 
         String[] lab = {"Nom","Société","Téléphone","Email","Note","Facturation","Date contrat"};
@@ -174,6 +176,9 @@ public class MainView {
         Button bPDF = new Button("Fiche PDF");
         Button bPDFAll = new Button("PDF global");
 
+        bAdd.getStyleClass().add("accent");
+        bFact.getStyleClass().add("accent");
+
         bAdd.setOnAction(e -> editDialog(null));
         bEdit.setOnAction(e -> editDialog(table.getSelectionModel().getSelectedItem()));
         bDel.setOnAction(e -> {
@@ -213,8 +218,9 @@ public class MainView {
             }
         });
 
-        HBox hb = new HBox(8, bAdd, bEdit, bDel, bService, bHist, bFact, bPDF, bPDFAll);
+        HBox hb = new HBox(16, bAdd, bEdit, bDel, bService, bHist, bFact, bPDF, bPDFAll);
         hb.setPadding(new Insets(10));
+        hb.setAlignment(Pos.CENTER_LEFT);
         return hb;
     }
 
@@ -308,14 +314,20 @@ public class MainView {
         }
         Stage win = new Stage();
         win.setTitle("Historique — " + p.getNom());
-        VBox vb = new VBox(6);
+
+        Label title = new Label("Historique — " + p.getNom());
+        title.getStyleClass().add("title");
+
+        VBox vb = new VBox(6, title);
         vb.setPadding(new Insets(10));
         vb.getChildren().add(new Label("Chargement..."));
-        win.setScene(new Scene(new ScrollPane(vb), 400, 400));
+        Scene sc = new Scene(new ScrollPane(vb), 400, 400);
+        sc.getStylesheets().add(getClass().getResource("/css/dark.css").toExternalForm());
+        win.setScene(sc);
         win.initModality(Modality.WINDOW_MODAL);
         win.show();
         runAsync(() -> dao.services(p.getId()), list -> {
-            vb.getChildren().clear();
+            vb.getChildren().setAll(title);
             list.forEach(sr -> vb.getChildren().add(new Label(sr.date() + " — " + sr.desc())));
         });
     }
@@ -326,6 +338,9 @@ public class MainView {
 
         Stage win = new Stage();
         win.setTitle("Factures — "+p.getNom());
+
+        Label title = new Label("Factures — "+p.getNom());
+        title.getStyleClass().add("title");
 
         /* ====== TableView ====== */
         TableView<Facture> tv = new TableView<>();
@@ -385,9 +400,11 @@ public class MainView {
         HBox buttons = new HBox(10,bAdd,bToggle,bClose);
         buttons.setPadding(new Insets(10));
 
-        VBox root = new VBox(10, tv, buttons);
+        VBox root = new VBox(10, title, tv, buttons);
         root.setPadding(new Insets(10));
-        win.setScene(new Scene(root, 600, 400));
+        Scene sc = new Scene(root, 600, 400);
+        sc.getStylesheets().add(getClass().getResource("/css/dark.css").toExternalForm());
+        win.setScene(sc);
         win.initModality(Modality.WINDOW_MODAL);
         win.show();
 
