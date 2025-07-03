@@ -9,8 +9,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
-public class DB {
+public class DB implements AutoCloseable {
     private static final DateTimeFormatter DATE_FR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    private static final DateTimeFormatter DATE_DB = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private final Connection conn;
 
     public DB(String path) {
@@ -48,6 +49,7 @@ public class DB {
         }
     }
 
+    @Override
     public void close() {
         try {
             conn.close();
@@ -113,7 +115,7 @@ public class DB {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, pid);
             ps.setString(2, desc);
-            ps.setString(3, DATE_FR.format(LocalDate.now()));
+            ps.setString(3, DATE_DB.format(LocalDate.now()));
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -126,7 +128,11 @@ public class DB {
             ps.setInt(1, pid);
             ResultSet rs = ps.executeQuery();
             List<ServiceRow> out = new ArrayList<>();
-            while (rs.next()) out.add(new ServiceRow(rs.getString("description"), rs.getString("date")));
+            while (rs.next()) {
+                String raw = rs.getString("date");
+                String date = DATE_FR.format(LocalDate.parse(raw, DATE_DB));
+                out.add(new ServiceRow(rs.getString("description"), date));
+            }
             return out;
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -134,6 +140,10 @@ public class DB {
     }
 
     private static Prestataire rowToPrestataire(ResultSet rs) throws SQLException {
+        String raw = rs.getString("date_contrat");
+        String date = raw == null || raw.isBlank()
+                ? ""
+                : DATE_FR.format(LocalDate.parse(raw, DATE_DB));
         return new Prestataire(
                 rs.getInt("id"),
                 rs.getString("nom"),
@@ -142,7 +152,7 @@ public class DB {
                 rs.getString("email"),
                 rs.getInt("note"),
                 rs.getString("facturation"),
-                rs.getString("date_contrat"));
+                date);
     }
 
     private static void fill(PreparedStatement ps, Prestataire p) throws SQLException {
@@ -152,6 +162,6 @@ public class DB {
         ps.setString(4, p.getEmail());
         ps.setInt(5, p.getNote());
         ps.setString(6, p.getFacturation());
-        ps.setString(7, p.getDateContrat());
+        ps.setString(7, LocalDate.parse(p.getDateContrat(), DATE_FR).format(DATE_DB));
     }
 }

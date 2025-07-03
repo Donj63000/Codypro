@@ -20,12 +20,16 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainView {
     private static final DateTimeFormatter DATE_FR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final BorderPane root = new BorderPane();
     private final DB dao;
+
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> new Thread(r, "gui-bg"));
 
     private final TableView<Prestataire> table = new TableView<>();
     private final TextField search = new TextField();
@@ -36,6 +40,7 @@ public class MainView {
         this.dao = dao;
         buildLayout(stage);
         refresh("");
+        stage.setOnCloseRequest(e -> executor.shutdown());
     }
 
     public Parent getRoot() {
@@ -55,7 +60,7 @@ public class MainView {
             if (ex != null) ex.printStackTrace();
             Platform.runLater(() -> alert(ex == null ? "Erreur" : ex.getMessage()));
         });
-        new Thread(task, "gui-bg").start();
+        executor.submit(task);
     }
 
     private void runAsync(Runnable work, Runnable ui) {
