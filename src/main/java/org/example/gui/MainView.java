@@ -3,6 +3,7 @@ package org.example.gui;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -174,6 +175,9 @@ public class MainView {
         Button bPDF = new Button("Fiche PDF");
         Button bPDFAll = new Button("PDF global");
 
+        bAdd.getStyleClass().add("accent");
+        bFact.getStyleClass().add("accent");
+
         bAdd.setOnAction(e -> editDialog(null));
         bEdit.setOnAction(e -> editDialog(table.getSelectionModel().getSelectedItem()));
         bDel.setOnAction(e -> {
@@ -213,8 +217,9 @@ public class MainView {
             }
         });
 
-        HBox hb = new HBox(8, bAdd, bEdit, bDel, bService, bHist, bFact, bPDF, bPDFAll);
+        HBox hb = new HBox(16, bAdd, bEdit, bDel, bService, bHist, bFact, bPDF, bPDFAll);
         hb.setPadding(new Insets(10));
+        hb.setAlignment(Pos.CENTER_LEFT);
         return hb;
     }
 
