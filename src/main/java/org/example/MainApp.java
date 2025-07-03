@@ -18,7 +18,7 @@ public class MainApp extends Application {
     public void start(Stage primaryStage) {
         dao = new DB(DB_FILE);
         MainView view = new MainView(primaryStage, dao);
-        primaryStage.setTitle("Gestion des Prestataires — Rochias");
+        primaryStage.setTitle("Gestion des Prestataires");
         primaryStage.setScene(new Scene(view.getRoot(), 920, 600));
         primaryStage.show();
     }
