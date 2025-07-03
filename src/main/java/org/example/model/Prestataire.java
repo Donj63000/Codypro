@@ -11,6 +11,7 @@ public class Prestataire {
     private final IntegerProperty note = new SimpleIntegerProperty();
     private final StringProperty facturation = new SimpleStringProperty();
     private final StringProperty dateContrat = new SimpleStringProperty();
+    private final IntegerProperty impayes = new SimpleIntegerProperty();
 
     public Prestataire(int id, String n, String s, String tel, String mail, int note, String fact, String date) {
         this.id.set(id);
@@ -32,6 +33,9 @@ public class Prestataire {
     public int getNote() { return note.get(); }
     public String getFacturation() { return facturation.get(); }
     public String getDateContrat() { return dateContrat.get(); }
+    public int getImpayes() { return impayes.get(); }
+    public void setImpayes(int n) { impayes.set(n); }
+    public IntegerProperty impayesProperty() { return impayes; }
 
     public IntegerProperty idProperty() { return id; }
     public StringProperty nomProperty() { return nom; }
@@ -41,6 +45,7 @@ public class Prestataire {
     public IntegerProperty noteProperty() { return note; }
     public StringProperty facturationProperty() { return facturation; }
     public StringProperty dateContratProperty() { return dateContrat; }
+    
 
     public Prestataire copyWithoutId() {
         return new Prestataire(0, getNom(), getSociete(), getTelephone(), getEmail(), getNote(), getFacturation(), getDateContrat());

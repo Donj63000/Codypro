@@ -82,9 +82,12 @@ public class DB implements AutoCloseable {
 
     public List<Prestataire> list(String filtre) {
         String sql = """
-                SELECT * FROM prestataires
-                WHERE nom LIKE ? OR societe LIKE ?
-                ORDER BY nom
+                SELECT  p.*, 
+                       (SELECT COUNT(*) FROM factures f
+                        WHERE f.prestataire_id = p.id AND f.paye = 0) AS nb_impayes
+                FROM    prestataires p
+                WHERE   p.nom LIKE ? OR p.societe LIKE ?
+                ORDER BY p.nom
             """;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             String like = "%" + filtre + "%";
@@ -235,7 +238,11 @@ public class DB implements AutoCloseable {
     private static Prestataire rowToPrestataire(ResultSet rs) throws SQLException {
         LocalDate d = parseAny(rs.getString("date_contrat"));
         String date = d == null ? "" : DATE_FR.format(d);
-        return new Prestataire(
+        int imp = 0;
+        try {
+            imp = rs.getInt("nb_impayes");
+        } catch (SQLException ignore) {}
+        Prestataire pr = new Prestataire(
                 rs.getInt("id"),
                 rs.getString("nom"),
                 rs.getString("societe"),
@@ -244,6 +251,8 @@ public class DB implements AutoCloseable {
                 rs.getInt("note"),
                 rs.getString("facturation"),
                 date);
+        pr.setImpayes(imp);
+        return pr;
     }
 
     private static void fill(PreparedStatement ps, Prestataire p) throws SQLException {
