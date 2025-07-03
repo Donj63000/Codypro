@@ -6,6 +6,7 @@ import org.example.model.ServiceRow;
 import java.sql.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -122,6 +123,15 @@ public class DB implements AutoCloseable {
         }
     }
 
+    private static LocalDate parseAny(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return LocalDate.parse(raw, DATE_DB);
+        } catch (DateTimeParseException ex) {
+            return LocalDate.parse(raw, DATE_FR);
+        }
+    }
+
     public List<ServiceRow> services(int pid) {
         String sql = "SELECT description,date FROM services WHERE prestataire_id=? ORDER BY date";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -129,9 +139,10 @@ public class DB implements AutoCloseable {
             ResultSet rs = ps.executeQuery();
             List<ServiceRow> out = new ArrayList<>();
             while (rs.next()) {
-                String raw = rs.getString("date");
-                String date = DATE_FR.format(LocalDate.parse(raw, DATE_DB));
-                out.add(new ServiceRow(rs.getString("description"), date));
+                LocalDate d = parseAny(rs.getString("date"));
+                out.add(new ServiceRow(
+                        rs.getString("description"),
+                        d == null ? "" : DATE_FR.format(d)));
             }
             return out;
         } catch (SQLException e) {
@@ -140,10 +151,8 @@ public class DB implements AutoCloseable {
     }
 
     private static Prestataire rowToPrestataire(ResultSet rs) throws SQLException {
-        String raw = rs.getString("date_contrat");
-        String date = raw == null || raw.isBlank()
-                ? ""
-                : DATE_FR.format(LocalDate.parse(raw, DATE_DB));
+        LocalDate d = parseAny(rs.getString("date_contrat"));
+        String date = d == null ? "" : DATE_FR.format(d);
         return new Prestataire(
                 rs.getInt("id"),
                 rs.getString("nom"),
@@ -162,6 +171,8 @@ public class DB implements AutoCloseable {
         ps.setString(4, p.getEmail());
         ps.setInt(5, p.getNote());
         ps.setString(6, p.getFacturation());
-        ps.setString(7, LocalDate.parse(p.getDateContrat(), DATE_FR).format(DATE_DB));
+        String raw = p.getDateContrat().trim();
+        if (raw.isEmpty()) ps.setNull(7, Types.VARCHAR);
+        else ps.setString(7, LocalDate.parse(raw, DATE_FR).format(DATE_DB));
     }
 }
