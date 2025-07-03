@@ -7,6 +7,7 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.beans.property.ReadOnlyBooleanWrapper;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
@@ -100,6 +101,25 @@ public class MainView {
             c.setCellValueFactory(new PropertyValueFactory<>(props[i]));
             table.getColumns().add(c);
         }
+
+        TableColumn<Prestataire, Boolean> cOk = new TableColumn<>("Toutes factures payées");
+        cOk.setCellValueFactory(data ->
+                new ReadOnlyBooleanWrapper(dao.factures(data.getValue().getId(), false).isEmpty()));
+
+        cOk.setCellFactory(col -> new TableCell<>() {
+            @Override protected void updateItem(Boolean val, boolean empty) {
+                super.updateItem(val, empty);
+                if (empty || val == null) {
+                    setText(null);
+                    getStyleClass().removeAll("cell-paid","cell-unpaid");
+                } else {
+                    setText(val ? "\u2714" : "\u2717");
+                    getStyleClass().removeAll("cell-paid","cell-unpaid");
+                    getStyleClass().add(val ? "cell-paid" : "cell-unpaid");
+                }
+            }
+        });
+        table.getColumns().add(cOk);
         table.getSelectionModel().selectedItemProperty().addListener((obs, o, n) -> updateDetails(n));
         table.setPrefWidth(580);
     }
@@ -310,11 +330,28 @@ public class MainView {
         /* ====== TableView ====== */
         TableView<Facture> tv = new TableView<>();
         tv.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        TableColumn<Facture, Boolean> cPaye = new TableColumn<>("Réglée");
+        cPaye.setCellValueFactory(new PropertyValueFactory<>("paye"));
+
+        cPaye.setCellFactory(col -> new TableCell<>() {
+            @Override protected void updateItem(Boolean val, boolean empty) {
+                super.updateItem(val, empty);
+                if (empty || val == null) {
+                    setText(null);
+                    getStyleClass().removeAll("cell-paid","cell-unpaid");
+                } else {
+                    setText(val ? "\u2714" /*✓*/ : "\u2717" /*✗*/);
+                    getStyleClass().removeAll("cell-paid","cell-unpaid");
+                    getStyleClass().add(val ? "cell-paid" : "cell-unpaid");
+                }
+            }
+        });
+
         tv.getColumns().addAll(
             col("Échéance","echeanceFr"),
             col("Description","description"),
             col("Montant","montant"),
-            col("Réglée","paye"),
+            cPaye,
             col("Date paiement","datePaiementFr")
         );
         tv.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);

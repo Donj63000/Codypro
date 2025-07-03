@@ -1,0 +1,6 @@
+/* Application dark theme */
+
+
+/* --- états payé / impayé ----------------------------------------- */
+.cell-paid   { -fx-text-fill: #10a37f; }   /* vert ChatGPT */
+.cell-unpaid { -fx-text-fill: #e74c3c; }   /* rouge */
