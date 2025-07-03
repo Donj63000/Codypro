@@ -311,7 +311,9 @@ public class MainView {
         VBox vb = new VBox(6);
         vb.setPadding(new Insets(10));
         vb.getChildren().add(new Label("Chargement..."));
-        win.setScene(new Scene(new ScrollPane(vb), 400, 400));
+        Scene sc = new Scene(new ScrollPane(vb), 400, 400);
+        sc.getStylesheets().add(getClass().getResource("/css/dark.css").toExternalForm());
+        win.setScene(sc);
         win.initModality(Modality.WINDOW_MODAL);
         win.show();
         runAsync(() -> dao.services(p.getId()), list -> {
@@ -387,7 +389,9 @@ public class MainView {
 
         VBox root = new VBox(10, tv, buttons);
         root.setPadding(new Insets(10));
-        win.setScene(new Scene(root, 600, 400));
+        Scene sc = new Scene(root, 600, 400);
+        sc.getStylesheets().add(getClass().getResource("/css/dark.css").toExternalForm());
+        win.setScene(sc);
         win.initModality(Modality.WINDOW_MODAL);
         win.show();
 
