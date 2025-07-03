@@ -133,7 +133,8 @@ public class MainView {
     }
 
     private VBox buildDetailPane(Stage stage) {
-        VBox v = new VBox(8);
+        VBox v = new VBox(10);
+        v.setId("detail-pane");
         v.setPadding(new Insets(10));
 
         String[] lab = {"Nom","Société","Téléphone","Email","Note","Facturation","Date contrat"};
