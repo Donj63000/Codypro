@@ -15,9 +15,16 @@ It stores information in a local SQLite database and offers a GUI to:
 
 ## Running the application
 
-At the repository root simply run:
+The `Mailer` component uses two environment variables:
+
+- `MAIL_USER` – address used to send mails
+- `MAIL_PWD` – password for this account
+
+Export them before starting the program:
 
 ```bash
+export MAIL_USER="user@example.com"
+export MAIL_PWD="secret"
 mvn javafx:run
 ```
 
