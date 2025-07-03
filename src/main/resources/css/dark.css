@@ -1,5 +1,33 @@
 /* Application dark theme */
 
+/* Palette inspirée de chat.openai.com */
+.root {
+    -fx-base: #202123;
+    -fx-background: #202123;
+    -fx-control-inner-background: #2b2c2f;
+    -fx-accent: #10a37f;
+    -fx-focus-color: #10a37f;
+    -fx-faint-focus-color: transparent;
+    -fx-text-fill: #e6e6e6;
+}
+
+.label { -fx-text-fill: #e6e6e6; }
+.table-view, .list-view {
+    -fx-background-color: #2b2c2f;
+    -fx-table-cell-border-color: #3e3f42;
+}
+.table-row-cell:filled:selected, .list-cell:filled:selected {
+    -fx-background-color: #3e4a54;
+}
+
+.button {
+    -fx-background-radius: 4;
+    -fx-background-color: #3e3f42;
+    -fx-text-fill: #e6e6e6;
+}
+.button:hover {
+    -fx-background-color: #4f5054;
+}
 
 /* --- états payé / impayé ----------------------------------------- */
 .cell-paid   { -fx-text-fill: #10a37f; }   /* vert ChatGPT */
