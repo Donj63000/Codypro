@@ -94,8 +94,8 @@ public class MainView {
 
     private void createTable(Stage stage) {
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        String[] cols = {"Nom","Société","Téléphone","Email","Note","Facturation","Date contrat"};
-        String[] props = {"nom","societe","telephone","email","note","facturation","dateContrat"};
+        String[] cols = {"Nom","Société","Téléphone","Email","Note","Date contrat"};
+        String[] props = {"nom","societe","telephone","email","note","dateContrat"};
         for (int i = 0; i < cols.length; i++) {
             TableColumn<Prestataire, ?> c = new TableColumn<>(cols[i]);
             c.setCellValueFactory(new PropertyValueFactory<>(props[i]));
@@ -104,7 +104,7 @@ public class MainView {
 
         TableColumn<Prestataire, Boolean> cOk = new TableColumn<>("Toutes factures payées");
         cOk.setCellValueFactory(data ->
-                new ReadOnlyBooleanWrapper(dao.factures(data.getValue().getId(), false).isEmpty()));
+                new ReadOnlyBooleanWrapper(data.getValue().getImpayes() == 0));
 
         cOk.setCellFactory(col -> new TableCell<>() {
             @Override protected void updateItem(Boolean val, boolean empty) {
@@ -403,7 +403,10 @@ public class MainView {
     }
     private void refreshFactures(Prestataire p, TableView<Facture> tv){
         runAsync(() -> dao.factures(p.getId(), null),
-                 list -> tv.setItems(FXCollections.observableArrayList(list)));
+                 list -> {
+                     tv.setItems(FXCollections.observableArrayList(list));
+                     refresh(search.getText());
+                 });
     }
 
     private void addFactureDialog(Prestataire p, TableView<Facture> tv){
