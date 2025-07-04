@@ -5,11 +5,15 @@ import javafx.scene.Scene;
 import javafx.stage.Stage;
 import org.example.dao.DB;
 import org.example.gui.MainView;
+import org.example.mail.Mailer;
+
+import java.util.concurrent.*;
 
 public class MainApp extends Application {
     private static final String DB_FILE = "prestataires.db";
     private DB dao;
     private MainView view;
+    private ScheduledExecutorService scheduler;
 
     public static void main(String[] args) {
         launch(args);
@@ -24,10 +28,26 @@ public class MainApp extends Application {
         sc.getStylesheets().add(getClass().getResource("/css/dark.css").toExternalForm());
         primaryStage.setScene(sc);
         primaryStage.show();
+
+        scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.scheduleAtFixedRate(this::envoyerRappels, 1, 60, TimeUnit.MINUTES);
+    }
+
+    private void envoyerRappels() {
+        dao.rappelsÀEnvoyer().forEach(r -> {
+            try {
+                Mailer.send(r.dest(), r.sujet(), r.corps());
+                dao.markRappelEnvoyé(r.id());
+                System.out.println("Rappel envoyé à " + r.dest());
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        });
     }
 
     @Override
     public void stop() {
+        if (scheduler != null) scheduler.shutdownNow();
         if (dao != null) dao.close();
         if (view != null) view.shutdownExecutor();
     }

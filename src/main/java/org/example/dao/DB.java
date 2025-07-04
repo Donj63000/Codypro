@@ -3,9 +3,11 @@ package org.example.dao;
 import org.example.model.Prestataire;
 import org.example.model.ServiceRow;
 import org.example.model.Facture;
+import org.example.model.Rappel;
 
 import java.sql.*;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -58,6 +60,23 @@ public class DB implements AutoCloseable {
                             paye INTEGER NOT NULL DEFAULT 0,
                             date_paiement TEXT
                         );
+                        """);
+            }
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS rappels (
+                            id           INTEGER PRIMARY KEY,
+                            facture_id   INTEGER NOT NULL REFERENCES factures(id) ON DELETE CASCADE,
+                            dest         TEXT      NOT NULL,
+                            sujet        TEXT      NOT NULL,
+                            corps        TEXT      NOT NULL,
+                            date_envoi   TEXT      NOT NULL,   -- ISO yyyy-MM-dd HH:mm
+                            envoye       INTEGER   NOT NULL DEFAULT 0
+                        );
+                        """);
+                st.executeUpdate("""
+                        CREATE INDEX IF NOT EXISTS idx_rappels_date
+                        ON rappels(envoye,date_envoi);
                         """);
             }
             try (Statement st = conn.createStatement()) {
@@ -233,6 +252,49 @@ public class DB implements AutoCloseable {
                 rs.getInt("paye") != 0,
                 dp
         );
+    }
+
+    /* =========================== Rappels =========================== */
+    public void addRappel(Rappel r){
+        String sql = """
+            INSERT INTO rappels(facture_id,dest,sujet,corps,date_envoi)
+            VALUES(?,?,?,?,?)
+        """;
+        try (PreparedStatement ps = conn.prepareStatement(sql)){
+            ps.setInt   (1, r.factureId());
+            ps.setString(2, r.dest());
+            ps.setString(3, r.sujet());
+            ps.setString(4, r.corps());
+            ps.setString(5, r.dateEnvoi().toString());
+            ps.executeUpdate();
+        }catch(SQLException e){ throw new RuntimeException(e); }
+    }
+
+    public List<Rappel> rappelsÀEnvoyer(){
+        String sql = "SELECT * FROM rappels WHERE envoye=0 AND date_envoi<=?";
+        try(PreparedStatement ps = conn.prepareStatement(sql)){
+            ps.setString(1, LocalDateTime.now().toString());
+            ResultSet rs = ps.executeQuery();
+            List<Rappel> l = new ArrayList<>();
+            while(rs.next())
+                l.add(new Rappel(
+                    rs.getInt("id"),
+                    rs.getInt("facture_id"),
+                    rs.getString("dest"),
+                    rs.getString("sujet"),
+                    rs.getString("corps"),
+                    LocalDateTime.parse(rs.getString("date_envoi")),
+                    rs.getInt("envoye")!=0
+                ));
+            return l;
+        }catch(SQLException e){ throw new RuntimeException(e); }
+    }
+
+    public void markRappelEnvoyé(int id){
+        try(PreparedStatement ps = conn.prepareStatement(
+            "UPDATE rappels SET envoye=1 WHERE id=?")){
+            ps.setInt(1,id); ps.executeUpdate();
+        }catch(SQLException e){ throw new RuntimeException(e); }
     }
 
     private static Prestataire rowToPrestataire(ResultSet rs) throws SQLException {
