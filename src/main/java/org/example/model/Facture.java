@@ -1,11 +1,12 @@
 package org.example.model;
 
 import javafx.beans.property.*;
+import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
-public class Facture {
-    private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_LOCAL_DATE;
+public class Facture implements Serializable {
+    private static final long serialVersionUID = 1L;
     private static final DateTimeFormatter FR  = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final IntegerProperty id     = new SimpleIntegerProperty();
