@@ -37,3 +37,17 @@ mvn package
 ```
 
 The resulting archive will be located under `target/`.
+
+## Security & environment
+
+To send e‑mails via Gmail you must enable “App passwords” on your account (or
+use the SMTP server provided by your host). Once enabled, export the following
+environment variables before running the program so that `Mailer.send()` can use
+TLS on port 465:
+
+```bash
+export MAIL_USER="your.address@gmail.com"
+export MAIL_PWD="the_application_password"
+```
+
+With these variables in place the mailer should work out of the box.
