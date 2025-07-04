@@ -16,10 +16,13 @@ import javafx.stage.Stage;
 import org.example.dao.DB;
 import org.example.model.Facture;
 import org.example.model.Prestataire;
+import org.example.model.Rappel;
 import org.example.pdf.PDF;
+import org.example.mail.Mailer;
 
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.regex.Pattern;
@@ -384,10 +387,17 @@ public class MainView {
 
         /* ====== boutons ====== */
         Button bAdd = new Button("Nouvelle facture");
+        Button bMail = new Button("Rappel e-mail");
         Button bToggle = new Button("Marquer réglée / attente");
         Button bClose = new Button("Fermer");
 
         bAdd.setOnAction(ev -> addFactureDialog(p, tv));
+        bMail.setOnAction(ev -> {
+            Facture f = tv.getSelectionModel().getSelectedItem();
+            if(f==null){ alert("Sélectionnez une facture."); return; }
+            if(f.isPaye()){ alert("La facture est déjà réglée."); return; }
+            afficherDialogRappel(p, f);
+        });
         bToggle.setOnAction(ev -> {
             Facture f = tv.getSelectionModel().getSelectedItem();
             if(f!=null){
@@ -399,6 +409,7 @@ public class MainView {
 
         HBox buttons = new HBox(10,bAdd,bToggle,bClose);
         buttons.setPadding(new Insets(10));
+        buttons.getChildren().add(1, bMail); // après "Nouvelle facture"
 
         VBox root = new VBox(10, title, tv, buttons);
         root.setPadding(new Insets(10));
@@ -454,6 +465,61 @@ public class MainView {
         d.showAndWait().ifPresent(f ->
             runAsync(() -> dao.addFacture(f),
                      () -> refreshFactures(p, tv)));
+    }
+
+    private void afficherDialogRappel(Prestataire pr, Facture f){
+        Dialog<Void> dlg = new Dialog<>();
+        dlg.setTitle("Rappel – "+pr.getNom());
+
+        GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(10);
+        TextField tfDest  = new TextField(pr.getEmail());
+        TextField tfSujet = new TextField("Rappel de paiement – facture du "+f.getEcheanceFr());
+        TextArea  taCorps = new TextArea("""
+        Bonjour %NOM%,
+
+        Nous n'avons pas encore reçu le règlement de votre facture de %MONTANT% € (échéance %ECHEANCE%).
+
+        Merci de procéder au paiement ou de nous tenir informés.
+
+        Cordialement.
+    """.replace("%NOM%", pr.getNom())
+       .replace("%MONTANT%", String.format("%.2f",f.getMontant()))
+       .replace("%ECHEANCE%", f.getEcheanceFr())
+    );
+        taCorps.setPrefRowCount(8);
+
+        DatePicker dpDate = new DatePicker(f.getEcheance());
+        CheckBox   cbNow  = new CheckBox("Envoyer immédiatement");
+        cbNow.setSelected(true);
+        cbNow.selectedProperty().addListener((o,b,b2)->dpDate.setDisable(b2));
+
+        gp.addRow(0,new Label("Destinataire :"), tfDest);
+        gp.addRow(1,new Label("Sujet :"),        tfSujet);
+        gp.addRow(2,new Label("Message :"),      taCorps);
+        gp.addRow(3, cbNow, new Label("… sinon à la date :")); gp.add(dpDate,2,3);
+
+        dlg.getDialogPane().setContent(gp);
+        dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        dlg.setResultConverter(bt -> {
+            if(bt==ButtonType.OK){
+                if(cbNow.isSelected()){
+                    runAsync( () -> {
+                        Mailer.send(tfDest.getText(), tfSujet.getText(), taCorps.getText());
+                        return null;
+                    }, () -> alert("E‑mail envoyé.") );
+                }else{
+                    LocalDateTime when = dpDate.getValue().atTime(8,0); // 8h par défaut
+                    Rappel r = new Rappel(0, f.getId(),
+                            tfDest.getText(), tfSujet.getText(),
+                            taCorps.getText(), when, false);
+                    runAsync( () -> { dao.addRappel(r); return null; },
+                              () -> alert("Rappel enregistré pour le "+when.toLocalDate()) );
+                }
+            }
+            return null;
+        });
+        dlg.showAndWait();
     }
 
     private boolean confirm(String msg) {
