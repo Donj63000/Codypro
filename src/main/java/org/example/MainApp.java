@@ -6,6 +6,7 @@ import javafx.stage.Stage;
 import org.example.dao.DB;
 import org.example.dao.MailPrefsDAO;
 import org.example.gui.MainView;
+import org.example.gui.ThemeManager;
 import org.example.mail.Mailer;
 import org.example.mail.MailPrefs;
 import org.example.model.Prestataire;
@@ -33,7 +34,7 @@ public class MainApp extends Application {
         view = new MainView(primaryStage, dao, mailPrefsDao);
         primaryStage.setTitle("Gestion des Prestataires");
         Scene sc = new Scene(view.getRoot(), 920, 600);
-        sc.getStylesheets().add(getClass().getResource("/css/dark.css").toExternalForm());
+        org.example.gui.ThemeManager.apply(sc);
         primaryStage.setScene(sc);
         primaryStage.show();
 
