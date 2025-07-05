@@ -16,13 +16,14 @@ public class Facture implements Serializable {
     private final DoubleProperty montant = new SimpleDoubleProperty();
     private final BooleanProperty paye   = new SimpleBooleanProperty();
     private final ObjectProperty<LocalDate> datePaiement = new SimpleObjectProperty<>();
+    private final BooleanProperty preavisEnvoye = new SimpleBooleanProperty();
 
     /* ----- ctor ----- */
     public Facture(int id,int pid,String desc,LocalDate ech,double m,
-                   boolean paye,LocalDate datePay) {
+                   boolean paye,LocalDate datePay, boolean preavis) {
         this.id.set(id); prestataireId.set(pid); description.set(desc);
         echeance.set(ech); montant.set(m); this.paye.set(paye);
-        datePaiement.set(datePay);
+        datePaiement.set(datePay); preavisEnvoye.set(preavis);
     }
 
     /* ----- getters (simplifiés) ----- */
@@ -33,6 +34,8 @@ public class Facture implements Serializable {
     public double getMontant(){return montant.get();}
     public boolean isPaye(){return paye.get();}
     public LocalDate getDatePaiement(){return datePaiement.get();}
+    public boolean isPreavisEnvoye(){return preavisEnvoye.get();}
+    public boolean preavisEnvoye(){return preavisEnvoye.get();}
     public String getEcheanceFr() { return echeanceFr(); }
     public String getDatePaiementFr() { return datePaiementFr(); }
 

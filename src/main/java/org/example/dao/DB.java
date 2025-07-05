@@ -85,6 +85,31 @@ public class DB implements AutoCloseable {
                         ON factures(prestataire_id, paye);
                         """);
             }
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS mail_prefs (
+                            id               INTEGER PRIMARY KEY CHECK(id=1),
+                            host             TEXT  NOT NULL,
+                            port             INTEGER NOT NULL,
+                            ssl              INTEGER NOT NULL DEFAULT 1,
+                            user             TEXT,
+                            pwd              TEXT,
+                            from_addr        TEXT  NOT NULL,
+                            copy_to_self     TEXT,
+                            delay_hours      INTEGER NOT NULL DEFAULT 48,
+                            subj_tpl_presta  TEXT  NOT NULL,
+                            body_tpl_presta  TEXT  NOT NULL,
+                            subj_tpl_self    TEXT  NOT NULL,
+                            body_tpl_self    TEXT  NOT NULL
+                        );
+                        """);
+            }
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("""
+                    ALTER TABLE factures
+                    ADD COLUMN preavis_envoye INTEGER NOT NULL DEFAULT 0
+                """);
+            } catch (SQLException ignore) {}
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -97,6 +122,10 @@ public class DB implements AutoCloseable {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public java.sql.Connection getConnection(){
+        return conn;
     }
 
     public List<Prestataire> list(String filtre) {
@@ -153,6 +182,15 @@ public class DB implements AutoCloseable {
             throw new RuntimeException(e);
         }
     }
+
+    public Prestataire findPrestataire(int pid){
+        String sql = "SELECT * FROM prestataires WHERE id=?";
+        try(PreparedStatement ps = conn.prepareStatement(sql)){
+            ps.setInt(1, pid);
+            ResultSet rs = ps.executeQuery();
+            if(!rs.next()) return null;
+            return rowToPrestataire(rs);
+        }catch(SQLException e){ throw new RuntimeException(e);}    }
 
     public void addService(int pid, String desc) {
         String sql = "INSERT INTO services(prestataire_id,description,date) VALUES(?,?,?)";
@@ -243,6 +281,10 @@ public class DB implements AutoCloseable {
     private static Facture rowToFacture(ResultSet rs) throws SQLException {
         LocalDate ech = parseAny(rs.getString("echeance"));
         LocalDate dp = parseAny(rs.getString("date_paiement"));
+        int preavis = 0;
+        try {
+            preavis = rs.getInt("preavis_envoye");
+        } catch (SQLException ignore) {}
         return new Facture(
                 rs.getInt("id"),
                 rs.getInt("prestataire_id"),
@@ -250,9 +292,29 @@ public class DB implements AutoCloseable {
                 ech,
                 rs.getDouble("montant_ht"),
                 rs.getInt("paye") != 0,
-                dp
+                dp,
+                preavis != 0
         );
     }
+
+    public List<Facture> facturesImpayeesAvant(LocalDateTime lim){
+        String sql = """
+            SELECT * FROM factures
+            WHERE paye=0 AND preavis_envoye=0 AND
+                  echeance <= ?""";
+        try(PreparedStatement ps = conn.prepareStatement(sql)){
+            ps.setString(1, lim.toLocalDate().toString());
+            ResultSet rs = ps.executeQuery();
+            List<Facture> l = new ArrayList<>();
+            while(rs.next()) l.add(rowToFacture(rs));
+            return l;
+        }catch(SQLException e){ throw new RuntimeException(e);}  }
+
+    public void marquerPreavisEnvoye(int fid){
+        try(PreparedStatement ps = conn.prepareStatement(
+            "UPDATE factures SET preavis_envoye=1 WHERE id=?")){
+            ps.setInt(1,fid); ps.executeUpdate();
+        }catch(SQLException e){ throw new RuntimeException(e);} }
 
     /* =========================== Rappels =========================== */
     public void addRappel(Rappel r){

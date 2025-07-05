@@ -4,14 +4,21 @@ import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 import org.example.dao.DB;
+import org.example.dao.MailPrefsDAO;
 import org.example.gui.MainView;
 import org.example.mail.Mailer;
+import org.example.mail.MailPrefs;
+import org.example.model.Prestataire;
+
+import java.time.LocalDateTime;
+import java.util.Map;
 
 import java.util.concurrent.*;
 
 public class MainApp extends Application {
     private static final String DB_FILE = "prestataires.db";
     private DB dao;
+    private MailPrefsDAO mailPrefsDao;
     private MainView view;
     private ScheduledExecutorService scheduler;
 
@@ -22,6 +29,7 @@ public class MainApp extends Application {
     @Override
     public void start(Stage primaryStage) {
         dao = new DB(DB_FILE);
+        mailPrefsDao = new MailPrefsDAO(dao.getConnection());
         view = new MainView(primaryStage, dao);
         primaryStage.setTitle("Gestion des Prestataires");
         Scene sc = new Scene(view.getRoot(), 920, 600);
@@ -33,15 +41,39 @@ public class MainApp extends Application {
         scheduler.scheduleAtFixedRate(this::envoyerRappels, 1, 60, TimeUnit.MINUTES);
     }
 
-    private void envoyerRappels() {
+    private void envoyerRappels(){
+        MailPrefs cfg = mailPrefsDao.load();          // ① config courante
+
+        // ② rappels manuels (table rappels)
         dao.rappelsÀEnvoyer().forEach(r -> {
-            try {
-                Mailer.send(r.dest(), r.sujet(), r.corps());
+            try{
+                Mailer.send(cfg, r.dest(), r.sujet(), r.corps());
                 dao.markRappelEnvoyé(r.id());
-                System.out.println("Rappel envoyé à " + r.dest());
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
+            }catch(Exception ex){ ex.printStackTrace(); }
+        });
+
+        // ③ pré‑avis internes
+        LocalDateTime lim = LocalDateTime.now().plusHours(cfg.delayHours());
+        dao.facturesImpayeesAvant(lim).forEach(f -> {
+            if(f.isPaye() || f.preavisEnvoye()) return;
+            Prestataire pr = dao.findPrestataire(f.getPrestataireId());
+            Map<String,String> v = Mailer.vars(pr,f);
+
+            try{
+                /* a) mail au prestataire */
+                Mailer.send(cfg, pr.getEmail(),
+                        Mailer.subjToPresta(cfg,v),
+                        Mailer.bodyToPresta(cfg,v));
+
+                /* b) mail à nous‑même si renseigné */
+                if(!cfg.copyToSelf().isBlank())
+                    Mailer.send(cfg, cfg.copyToSelf(),
+                        Mailer.subjToSelf(cfg,v),
+                        Mailer.bodyToSelf(cfg,v));
+
+                dao.marquerPreavisEnvoye(f.getId());
+                System.out.println("Pré‑avis envoyé pour facture "+f.getId());
+            }catch(Exception ex){ ex.printStackTrace(); }
         });
     }
 
