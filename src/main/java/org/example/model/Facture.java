@@ -35,6 +35,7 @@ public class Facture implements Serializable {
     public boolean isPaye(){return paye.get();}
     public LocalDate getDatePaiement(){return datePaiement.get();}
     public boolean isPreavisEnvoye(){return preavisEnvoye.get();}
+    public boolean preavisEnvoye(){return preavisEnvoye.get();}
     public String getEcheanceFr() { return echeanceFr(); }
     public String getDatePaiementFr() { return datePaiementFr(); }
 
