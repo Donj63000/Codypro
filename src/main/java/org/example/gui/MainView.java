@@ -54,6 +54,14 @@ public class MainView {
         stage.setOnCloseRequest(e -> executor.shutdown());
     }
 
+    /**
+     * Convenience constructor used by older code or tests that don't
+     * explicitly provide a {@link MailPrefsDAO} instance.
+     */
+    public MainView(Stage stage, DB dao) {
+        this(stage, dao, new MailPrefsDAO(dao.getConnection()));
+    }
+
     public Parent getRoot() {
         return root;
     }
