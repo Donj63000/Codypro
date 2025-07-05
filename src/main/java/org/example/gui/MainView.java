@@ -504,9 +504,10 @@ public class MainView {
         dlg.setResultConverter(bt -> {
             if(bt==ButtonType.OK){
                 if(cbNow.isSelected()){
-                    runAsync( () ->
-                        Mailer.send(tfDest.getText(), tfSujet.getText(), taCorps.getText()),
-                        () -> alert("E‑mail envoyé.") );
+                    runAsync(() -> {
+                        Mailer.send(tfDest.getText(), tfSujet.getText(), taCorps.getText());
+                        return null;
+                    }, v -> alert("E‑mail envoyé."));
                 }else{
                     LocalDateTime when = dpDate.getValue().atTime(8,0); // 8h par défaut
                     Rappel r = new Rappel(0, f.getId(),
