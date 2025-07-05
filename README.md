@@ -15,20 +15,26 @@ Elle stocke les informations dans une base SQLite locale et propose une interfac
 
 ## Exécution de l'application
 
-Le composant `Mailer` utilise deux variables d'environnement :
+Le composant `Mailer` s'appuie désormais sur la configuration
+fournie par la classe [`MailPrefs`](src/main/java/org/example/mail/MailPrefs.java).
+Par défaut, `MailPrefs.defaultValues()` est utilisée mais vous
+pouvez adapter ces paramètres (serveur SMTP, identifiants, modèles de
+messages) selon votre environnement avant de lancer l'application :
 
-- `MAIL_USER` – adresse utilisée pour envoyer les mails
-- `MAIL_PWD` – mot de passe du compte
+```java
+MailPrefs prefs = MailPrefs.defaultValues();
+// personnaliser si nécessaire :
+// MailPrefs custom = new MailPrefs(...);
+```
 
-Exportez-les avant de démarrer le programme :
+L'exécution se fait ensuite via Maven :
 
 ```bash
-export MAIL_USER="user@example.com"
-export MAIL_PWD="secret"
 mvn javafx:run
 ```
 
-Maven télécharge les dépendances JavaFX nécessaires et lance `org.example.MainApp`.
+Maven télécharge les dépendances JavaFX nécessaires et lance
+`org.example.MainApp`.
 
 Vous pouvez également construire le projet en JAR :
 
@@ -43,17 +49,11 @@ L'archive générée se trouve dans `target/`.
 1. Ouvrez IntelliJ IDEA.
 2. Choisissez **File > Open…** puis sélectionnez le fichier `pom.xml` du projet.
 3. Confirmez l'importation en tant que projet Maven et attendez le téléchargement des dépendances.
-4. Configurez les variables d'environnement `MAIL_USER` et `MAIL_PWD` dans la configuration d'exécution.
-5. Lancez la classe `org.example.MainApp` ou utilisez la commande *Run* proposée par Maven.
+4. Lancez la classe `org.example.MainApp` ou utilisez la commande *Run* proposée par Maven.
 
 ## Sécurité et environnement
 
 Pour envoyer des e‑mails via Gmail vous devez activer les « mots de passe d'application » sur votre compte (ou
-utiliser le serveur SMTP fourni par votre hébergeur). Une fois activés, exportez les variables d'environnement suivantes avant de lancer le programme afin que `Mailer.send()` utilise TLS sur le port 465 :
-
-```bash
-export MAIL_USER="your.address@gmail.com"
-export MAIL_PWD="the_application_password"
-```
-
-Avec ces variables en place, l'envoi de mails doit fonctionner immédiatement.
+utiliser le serveur SMTP fourni par votre hébergeur). Configurez ensuite les paramètres SMTP
+correspondants dans `MailPrefs` (hôte, port, utilisateur, mot de passe, etc.) pour que `Mailer.send()`
+puisse établir la connexion chiffrée sur le port adéquat.
