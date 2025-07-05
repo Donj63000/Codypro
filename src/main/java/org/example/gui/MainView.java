@@ -458,7 +458,7 @@ public class MainView {
                 return new Facture(0,p.getId(),tfDesc.getText(),
                                    dpEch.getValue(),
                                    Double.parseDouble(tfMont.getText()),
-                                   false,null);
+                                   false,null,false);
             }
             return null;
         });
