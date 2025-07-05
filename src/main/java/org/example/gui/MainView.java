@@ -504,16 +504,15 @@ public class MainView {
         dlg.setResultConverter(bt -> {
             if(bt==ButtonType.OK){
                 if(cbNow.isSelected()){
-                    runAsync( () -> {
-                        Mailer.send(tfDest.getText(), tfSujet.getText(), taCorps.getText());
-                        return null;
-                    }, () -> alert("E‑mail envoyé.") );
+                    runAsync( () ->
+                        Mailer.send(tfDest.getText(), tfSujet.getText(), taCorps.getText()),
+                        () -> alert("E‑mail envoyé.") );
                 }else{
                     LocalDateTime when = dpDate.getValue().atTime(8,0); // 8h par défaut
                     Rappel r = new Rappel(0, f.getId(),
                             tfDest.getText(), tfSujet.getText(),
                             taCorps.getText(), when, false);
-                    runAsync( () -> { dao.addRappel(r); return null; },
+                    runAsync( () -> dao.addRappel(r),
                               () -> alert("Rappel enregistré pour le "+when.toLocalDate()) );
                 }
             }
