@@ -72,7 +72,7 @@ public class DBTest {
         db.add(p);
         int pid = db.list("").get(0).getId();
 
-        Facture f = new Facture(0, pid, "Test", LocalDate.now(), 100.0, false, null);
+        Facture f = new Facture(0, pid, "Test", LocalDate.now(), 100.0, false, null, false);
         db.addFacture(f);
 
         List<Facture> all = db.factures(pid, null);
