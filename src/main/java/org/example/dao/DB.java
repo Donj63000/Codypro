@@ -124,6 +124,10 @@ public class DB implements AutoCloseable {
         }
     }
 
+    public java.sql.Connection getConnection(){
+        return conn;
+    }
+
     public List<Prestataire> list(String filtre) {
         String sql = """
                 SELECT  p.*, 

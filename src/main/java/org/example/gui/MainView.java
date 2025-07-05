@@ -20,6 +20,8 @@ import org.example.model.Rappel;
 import org.example.pdf.PDF;
 import org.example.mail.Mailer;
 import org.example.mail.MailPrefs;
+import org.example.dao.MailPrefsDAO;
+import org.example.gui.MailPrefsDialog;
 
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -35,6 +37,7 @@ public class MainView {
 
     private final BorderPane root = new BorderPane();
     private final DB dao;
+    private final MailPrefsDAO mailPrefsDao;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> new Thread(r, "gui-bg"));
 
@@ -45,6 +48,7 @@ public class MainView {
 
     public MainView(Stage stage, DB dao) {
         this.dao = dao;
+        this.mailPrefsDao = new MailPrefsDAO(dao.getConnection());
         buildLayout(stage);
         refresh("");
         stage.setOnCloseRequest(e -> executor.shutdown());
@@ -179,6 +183,7 @@ public class MainView {
         Button bFact = new Button("Factures");
         Button bPDF = new Button("Fiche PDF");
         Button bPDFAll = new Button("PDF global");
+        Button bPrefsMail = new Button("Mail…");
 
         bAdd.getStyleClass().add("accent");
         bFact.getStyleClass().add("accent");
@@ -222,7 +227,8 @@ public class MainView {
             }
         });
 
-        HBox hb = new HBox(16, bAdd, bEdit, bDel, bService, bHist, bFact, bPDF, bPDFAll);
+        bPrefsMail.setOnAction(e -> MailPrefsDialog.open(stage, mailPrefsDao));
+        HBox hb = new HBox(16, bAdd, bEdit, bDel, bService, bHist, bFact, bPDF, bPDFAll, bPrefsMail);
         hb.setPadding(new Insets(10));
         hb.setAlignment(Pos.CENTER_LEFT);
         return hb;
