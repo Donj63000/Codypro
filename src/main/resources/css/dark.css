@@ -1,25 +1,25 @@
 /*======================================================================
-  Thème sombre – Prestataires (v2)
-  Palette : #202123 base | #2b2c2f surface | #3e3f42 surface+1
-            #10a37f accent | #e6e6e6 txt | #7c7c7d txt-sec
-======================================================================*/
+  Flat dark theme
+  Palette: #1e1e1e base | #252526 surface | #3c3c3c surface+1
+           #10a37f accent | #e6e6e6 text | #808080 text-secondary
+=======================================================================*/
 
 /* ---------------- FONTS ------------------------------------------- */
 @font-face {
     font-family: "Inter";
-    src: url("../fonts/Inter-Regular.ttf");
+    src: url("/fonts/Inter-Regular.ttf");
 }
 
 .root {
     -fx-font-family: "Inter", "Segoe UI", sans-serif;
     -fx-font-size: 13px;
 
-    -fx-base:                   #202123;
-    -fx-background:             #202123;
-    -fx-control-inner-background: #2b2c2f;
+    -fx-base:                   #1e1e1e;
+    -fx-background:             #1e1e1e;
+    -fx-control-inner-background: #252526;
 
     -fx-accent:                 #10a37f;
-    -fx-focus-color:            #10a37f;
+    -fx-focus-color:            -fx-accent;
     -fx-faint-focus-color:      transparent;
 
     -fx-text-fill:              #e6e6e6;
@@ -28,60 +28,60 @@
 /* ---------------- TEXT & LABELS ----------------------------------- */
 .label            { -fx-text-fill: #e6e6e6; }
 .label.title      { -fx-font-size: 17px; -fx-font-weight: bold; }
-.label.caption    { -fx-text-fill: #7c7c7d; -fx-font-size: 11px; }
+.label.caption    { -fx-text-fill: #808080; -fx-font-size: 11px; }
 
 /* ---------------- BUTTONS ----------------------------------------- */
 .button {
     -fx-background-radius: 4;
-    -fx-background-color: #3e3f42;
+    -fx-background-color: #3c3c3c;
     -fx-text-fill: #e6e6e6;
-    -fx-padding: 6 12 6 12;
+    -fx-padding: 6 12;
 }
-.button:hover     { -fx-background-color: derive(#3e3f42, +10%); }
-.button:pressed   { -fx-background-color: derive(#3e3f42, -10%); }
+.button:hover     { -fx-background-color: derive(#3c3c3c, +10%); }
+.button:pressed   { -fx-background-color: derive(#3c3c3c, -10%); }
 
-/* bouton primaire (“accent”) */
-.button.accent          { -fx-background-color: #10a37f; }
-.button.accent:hover    { -fx-background-color: derive(#10a37f, +10%); }
-.button.accent:pressed  { -fx-background-color: derive(#10a37f, -10%); }
+/* primary accent button */
+.button.accent          { -fx-background-color: -fx-accent; }
+.button.accent:hover    { -fx-background-color: derive(-fx-accent, +10%); }
+.button.accent:pressed  { -fx-background-color: derive(-fx-accent, -10%); }
 
 /* ---------------- TEXT INPUT -------------------------------------- */
 .text-field,
 .text-area,
 .date-picker > .text-field {
-    -fx-background-color: #2b2c2f ;
-    -fx-text-fill:        #e6e6e6 ;
-    -fx-border-color:     #3e3f42 ;
+    -fx-background-color: #252526;
+    -fx-text-fill:        #e6e6e6;
+    -fx-border-color:     #3c3c3c;
 }
 .text-field:focused,
 .date-picker:focused > .text-field {
-    -fx-border-color: #10a37f ;
+    -fx-border-color: -fx-accent;
 }
 
 /* ---------------- TABLEVIEW --------------------------------------- */
 .table-view {
-    -fx-background-color: #2b2c2f ;
-    -fx-table-cell-border-color: #3e3f42 ;
+    -fx-background-color: #252526;
+    -fx-table-cell-border-color: #3c3c3c;
 }
 .table-view .column-header-background {
-    -fx-background-color: #2b2c2f ;
+    -fx-background-color: #252526;
 }
 .table-view .column-header,
 .table-view .filler {
-    -fx-size: 30px ;
-    -fx-border-color: transparent transparent #3e3f42 transparent ;
+    -fx-size: 30px;
+    -fx-border-color: transparent transparent #3c3c3c transparent;
 }
 .table-view .column-header .label {
-    -fx-text-fill: #e6e6e6 ;
-    -fx-font-weight: bold ;
+    -fx-text-fill: #e6e6e6;
+    -fx-font-weight: bold;
 }
 .table-row-cell:filled:selected,
 .list-cell:filled:selected {
-    -fx-background-color: #3e4a54 ;
+    -fx-background-color: #3e4a54;
 }
 
-/* icônes ✓ / ✗ (Unicode) */
-.cell-paid   { -fx-text-fill: #10a37f; }
+/* icons \u2713 / \u2717 (Unicode) */
+.cell-paid   { -fx-text-fill: -fx-accent; }
 .cell-unpaid { -fx-text-fill: #e74c3c; }
 
 /* ---------------- SCROLLBAR --------------------------------------- */
@@ -96,8 +96,9 @@
     -fx-background-color: derive(#4f5054, +10%);
 }
 
+/* ---------------- DETAIL PANE ------------------------------------- */
 #detail-pane {
-    -fx-background-color: #2b2c2f ;
-    -fx-background-radius: 8 ;
-    -fx-padding: 20 ;
+    -fx-background-color: #252526;
+    -fx-background-radius: 8;
+    -fx-padding: 20;
 }
