@@ -1,36 +1,87 @@
 package org.example.mail;
 
 import jakarta.mail.*;
-import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.*;
 
-import java.util.Optional;
-import java.util.Properties;
+import org.example.model.Facture;
+import org.example.model.Prestataire;
 
-public class Mailer {
-    private static final String MAIL_USER = Optional.ofNullable(System.getenv("MAIL_USER"))
-            .orElse("votre_mail@example.com");
-    private static final String MAIL_PWD = Optional.ofNullable(System.getenv("MAIL_PWD"))
-            .orElse("votre_mdp");
+import java.util.*;
 
-    public static void send(String dest, String subject, String body) throws MessagingException {
-        Properties props = new Properties();
-        props.put("mail.smtp.auth", "true");
-        props.put("mail.smtp.ssl.enable", "true");
-        props.put("mail.smtp.host", "smtp.gmail.com");
-        props.put("mail.smtp.port", "465");
+/**
+ * Utility class for sending e-mails using the preferences stored in
+ * {@link MailPrefs}. The previous implementation relied on environment
+ * variables; this version lets the caller provide all configuration values
+ * explicitly.
+ */
+public final class Mailer {
+    private Mailer() {}
 
-        Session sess = Session.getInstance(props, new Authenticator() {
+    /** Create a mail {@link Session} using the provided configuration. */
+    private static Session makeSession(MailPrefs cfg) {
+        Properties p = new Properties();
+        p.put("mail.smtp.auth", "true");
+        p.put("mail.smtp.ssl.enable", cfg.ssl() ? "true" : "false");
+        p.put("mail.smtp.host", cfg.host());
+        p.put("mail.smtp.port", String.valueOf(cfg.port()));
+        return Session.getInstance(p, new Authenticator() {
             @Override
             protected PasswordAuthentication getPasswordAuthentication() {
-                return new PasswordAuthentication(MAIL_USER, MAIL_PWD);
+                return new PasswordAuthentication(cfg.user(), cfg.pwd());
             }
         });
-        Message msg = new MimeMessage(sess);
-        msg.setFrom(new InternetAddress(MAIL_USER));
-        msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse(dest, false));
-        msg.setSubject(subject);
-        msg.setText(body);
-        Transport.send(msg);
+    }
+
+    /**
+     * Send an e-mail using the given configuration.
+     *
+     * @param cfg     mail server preferences
+     * @param to      recipient address
+     * @param subject mail subject
+     * @param body    mail body (plain text)
+     */
+    public static void send(MailPrefs cfg, String to, String subject, String body)
+            throws MessagingException {
+        Session s = makeSession(cfg);
+        Message m = new MimeMessage(s);
+        m.setFrom(new InternetAddress(cfg.from()));
+        m.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to, false));
+        m.setSubject(subject);
+        m.setText(body);
+        Transport.send(m);
+    }
+
+    /* ===== helpers de templating ===== */
+    private static String inject(String tpl, Map<String, String> vars) {
+        String out = tpl;
+        for (var e : vars.entrySet()) out = out.replace(e.getKey(), e.getValue());
+        return out;
+    }
+
+    /** Build a map of variables for template injection. */
+    public static Map<String, String> vars(Prestataire pr, Facture f) {
+        return Map.of(
+                "%NOM%", pr.getNom(),
+                "%EMAIL%", pr.getEmail(),
+                "%MONTANT%", String.format("%.2f", f.getMontant()),
+                "%ECHEANCE%", f.getEcheanceFr(),
+                "%ID%", String.valueOf(f.getId())
+        );
+    }
+
+    public static String subjToPresta(MailPrefs cfg, Map<String, String> v) {
+        return inject(cfg.subjPresta(), v);
+    }
+
+    public static String bodyToPresta(MailPrefs cfg, Map<String, String> v) {
+        return inject(cfg.bodyPresta(), v);
+    }
+
+    public static String subjToSelf(MailPrefs cfg, Map<String, String> v) {
+        return inject(cfg.subjSelf(), v);
+    }
+
+    public static String bodyToSelf(MailPrefs cfg, Map<String, String> v) {
+        return inject(cfg.bodySelf(), v);
     }
 }

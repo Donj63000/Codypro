@@ -6,6 +6,7 @@ import javafx.stage.Stage;
 import org.example.dao.DB;
 import org.example.gui.MainView;
 import org.example.mail.Mailer;
+import org.example.mail.MailPrefs;
 
 import java.util.concurrent.*;
 
@@ -36,7 +37,7 @@ public class MainApp extends Application {
     private void envoyerRappels() {
         dao.rappelsÀEnvoyer().forEach(r -> {
             try {
-                Mailer.send(r.dest(), r.sujet(), r.corps());
+                Mailer.send(MailPrefs.defaultValues(), r.dest(), r.sujet(), r.corps());
                 dao.markRappelEnvoyé(r.id());
                 System.out.println("Rappel envoyé à " + r.dest());
             } catch (Exception ex) {

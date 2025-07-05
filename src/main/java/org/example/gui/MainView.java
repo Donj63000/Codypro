@@ -19,6 +19,7 @@ import org.example.model.Prestataire;
 import org.example.model.Rappel;
 import org.example.pdf.PDF;
 import org.example.mail.Mailer;
+import org.example.mail.MailPrefs;
 
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -505,7 +506,10 @@ public class MainView {
             if(bt==ButtonType.OK){
                 if(cbNow.isSelected()){
                     runAsync(() -> {
-                        Mailer.send(tfDest.getText(), tfSujet.getText(), taCorps.getText());
+                        Mailer.send(MailPrefs.defaultValues(),
+                                   tfDest.getText(),
+                                   tfSujet.getText(),
+                                   taCorps.getText());
                         return null;
                     }, v -> alert("E‑mail envoyé."));
                 }else{
