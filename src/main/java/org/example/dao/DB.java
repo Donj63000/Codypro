@@ -183,6 +183,15 @@ public class DB implements AutoCloseable {
         }
     }
 
+    public Prestataire findPrestataire(int pid){
+        String sql = "SELECT * FROM prestataires WHERE id=?";
+        try(PreparedStatement ps = conn.prepareStatement(sql)){
+            ps.setInt(1, pid);
+            ResultSet rs = ps.executeQuery();
+            if(!rs.next()) return null;
+            return rowToPrestataire(rs);
+        }catch(SQLException e){ throw new RuntimeException(e);}    }
+
     public void addService(int pid, String desc) {
         String sql = "INSERT INTO services(prestataire_id,description,date) VALUES(?,?,?)";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -287,6 +296,25 @@ public class DB implements AutoCloseable {
                 preavis != 0
         );
     }
+
+    public List<Facture> facturesImpayeesAvant(LocalDateTime lim){
+        String sql = """
+            SELECT * FROM factures
+            WHERE paye=0 AND preavis_envoye=0 AND
+                  echeance <= ?""";
+        try(PreparedStatement ps = conn.prepareStatement(sql)){
+            ps.setString(1, lim.toLocalDate().toString());
+            ResultSet rs = ps.executeQuery();
+            List<Facture> l = new ArrayList<>();
+            while(rs.next()) l.add(rowToFacture(rs));
+            return l;
+        }catch(SQLException e){ throw new RuntimeException(e);}  }
+
+    public void marquerPreavisEnvoye(int fid){
+        try(PreparedStatement ps = conn.prepareStatement(
+            "UPDATE factures SET preavis_envoye=1 WHERE id=?")){
+            ps.setInt(1,fid); ps.executeUpdate();
+        }catch(SQLException e){ throw new RuntimeException(e);} }
 
     /* =========================== Rappels =========================== */
     public void addRappel(Rappel r){

@@ -510,14 +510,16 @@ public class MainView {
 
         dlg.setResultConverter(bt -> {
             if(bt==ButtonType.OK){
+                MailPrefs cfg = mailPrefsDao.load();     // charger la config
                 if(cbNow.isSelected()){
                     runAsync(() -> {
-                        Mailer.send(MailPrefs.defaultValues(),
-                                   tfDest.getText(),
-                                   tfSujet.getText(),
-                                   taCorps.getText());
+                        Map<String,String> v = Mailer.vars(pr,f);
+                        Mailer.send(cfg,
+                                    tfDest.getText(),
+                                    Mailer.subjToPresta(cfg,v),
+                                    taCorps.getText());     // ici on ne ré‑injecte pas, l’user a déjà édité
                         return null;
-                    }, v -> alert("E‑mail envoyé."));
+                    }, _v -> alert("E‑mail envoyé."));
                 }else{
                     LocalDateTime when = dpDate.getValue().atTime(8,0); // 8h par défaut
                     Rappel r = new Rappel(0, f.getId(),
