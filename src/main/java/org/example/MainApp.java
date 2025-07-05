@@ -30,7 +30,7 @@ public class MainApp extends Application {
     public void start(Stage primaryStage) {
         dao = new DB(DB_FILE);
         mailPrefsDao = new MailPrefsDAO(dao.getConnection());
-        view = new MainView(primaryStage, dao);
+        view = new MainView(primaryStage, dao, mailPrefsDao);
         primaryStage.setTitle("Gestion des Prestataires");
         Scene sc = new Scene(view.getRoot(), 920, 600);
         sc.getStylesheets().add(getClass().getResource("/css/dark.css").toExternalForm());

@@ -46,9 +46,9 @@ public class MainView {
     private final Label[] detailLabels = new Label[7];
     private final ProgressBar noteBar = new ProgressBar(0);
 
-    public MainView(Stage stage, DB dao) {
+    public MainView(Stage stage, DB dao, MailPrefsDAO prefsDao) {
         this.dao = dao;
-        this.mailPrefsDao = new MailPrefsDAO(dao.getConnection());
+        this.mailPrefsDao = prefsDao;
         buildLayout(stage);
         refresh("");
         stage.setOnCloseRequest(e -> executor.shutdown());
