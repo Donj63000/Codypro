@@ -22,6 +22,7 @@ import org.example.mail.Mailer;
 import org.example.mail.MailPrefs;
 import org.example.dao.MailPrefsDAO;
 import org.example.gui.MailPrefsDialog;
+import org.example.gui.ThemeManager;
 
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -244,6 +245,7 @@ public class MainView {
 
     private void editDialog(Prestataire src) {
         Dialog<Prestataire> d = new Dialog<>();
+        ThemeManager.apply(d);
         d.setTitle(src == null ? "Nouveau Prestataire" : "Modifier Prestataire");
         d.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
 
@@ -317,6 +319,7 @@ public class MainView {
             return;
         }
         TextInputDialog td = new TextInputDialog();
+        ThemeManager.apply(td);
         td.setTitle("Nouveau service");
         td.setHeaderText("Description du service");
         td.showAndWait().ifPresent(desc -> {
@@ -340,7 +343,7 @@ public class MainView {
         vb.setPadding(new Insets(10));
         vb.getChildren().add(new Label("Chargement..."));
         Scene sc = new Scene(new ScrollPane(vb), 400, 400);
-        sc.getStylesheets().add(getClass().getResource("/css/dark.css").toExternalForm());
+        ThemeManager.apply(sc);
         win.setScene(sc);
         win.initModality(Modality.WINDOW_MODAL);
         win.show();
@@ -429,7 +432,7 @@ public class MainView {
         VBox root = new VBox(10, title, tv, buttons);
         root.setPadding(new Insets(10));
         Scene sc = new Scene(root, 600, 400);
-        sc.getStylesheets().add(getClass().getResource("/css/dark.css").toExternalForm());
+        ThemeManager.apply(sc);
         win.setScene(sc);
         win.initModality(Modality.WINDOW_MODAL);
         win.show();
@@ -454,6 +457,7 @@ public class MainView {
 
     private void addFactureDialog(Prestataire p, TableView<Facture> tv){
         Dialog<Facture> d = new Dialog<>();
+        ThemeManager.apply(d);
         d.setTitle("Nouvelle facture – "+p.getNom());
         d.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
 
@@ -484,6 +488,7 @@ public class MainView {
 
     private void afficherDialogRappel(Prestataire pr, Facture f){
         Dialog<Void> dlg = new Dialog<>();
+        ThemeManager.apply(dlg);
         dlg.setTitle("Rappel – "+pr.getNom());
 
         GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(10);
@@ -543,12 +548,15 @@ public class MainView {
     }
 
     private boolean confirm(String msg) {
-        return new Alert(Alert.AlertType.CONFIRMATION, msg, ButtonType.YES, ButtonType.NO)
-                .showAndWait().orElse(ButtonType.NO) == ButtonType.YES;
+        Alert a = new Alert(Alert.AlertType.CONFIRMATION, msg, ButtonType.YES, ButtonType.NO);
+        ThemeManager.apply(a);
+        return a.showAndWait().orElse(ButtonType.NO) == ButtonType.YES;
     }
 
     private void alert(String msg) {
-        new Alert(Alert.AlertType.ERROR, msg, ButtonType.OK).showAndWait();
+        Alert a = new Alert(Alert.AlertType.ERROR, msg, ButtonType.OK);
+        ThemeManager.apply(a);
+        a.showAndWait();
     }
 
     public void shutdownExecutor() {

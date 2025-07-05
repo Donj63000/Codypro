@@ -11,6 +11,7 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.example.dao.DB;
 import org.example.model.Prestataire;
+import org.example.gui.ThemeManager;
 
 import java.io.FileOutputStream;
 import java.nio.file.Path;
@@ -83,10 +84,14 @@ public class PDF {
     }
 
     private static void info(String m) {
-        new Alert(Alert.AlertType.INFORMATION, m, ButtonType.OK).showAndWait();
+        Alert a = new Alert(Alert.AlertType.INFORMATION, m, ButtonType.OK);
+        ThemeManager.apply(a);
+        a.showAndWait();
     }
 
     private static void error(String m) {
-        new Alert(Alert.AlertType.ERROR, m, ButtonType.OK).showAndWait();
+        Alert a = new Alert(Alert.AlertType.ERROR, m, ButtonType.OK);
+        ThemeManager.apply(a);
+        a.showAndWait();
     }
 }
