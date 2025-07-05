@@ -1,26 +1,26 @@
 # Prestataires Manager
 
-This project is a small JavaFX application used to manage service providers ("prestataires").
-It stores information in a local SQLite database and offers a GUI to:
+Ce projet est une petite application JavaFX destinée à gérer des prestataires de services.
+Elle stocke les informations dans une base SQLite locale et propose une interface graphique pour :
 
-- List, create and edit providers
-- Record services performed for each provider
-- Search through records
-- Export provider sheets and a global history as PDF files
+- lister, créer et modifier des prestataires ;
+- enregistrer les prestations réalisées pour chaque prestataire ;
+- rechercher dans les enregistrements ;
+- exporter les fiches de prestataires et l'historique global au format PDF.
 
-## Requirements
+## Prérequis
 
-- Java 17 or later
+- Java 17 ou supérieur
 - Maven
 
-## Running the application
+## Exécution de l'application
 
-The `Mailer` component uses two environment variables:
+Le composant `Mailer` utilise deux variables d'environnement :
 
-- `MAIL_USER` – address used to send mails
-- `MAIL_PWD` – password for this account
+- `MAIL_USER` – adresse utilisée pour envoyer les mails
+- `MAIL_PWD` – mot de passe du compte
 
-Export them before starting the program:
+Exportez-les avant de démarrer le programme :
 
 ```bash
 export MAIL_USER="user@example.com"
@@ -28,26 +28,32 @@ export MAIL_PWD="secret"
 mvn javafx:run
 ```
 
-Maven downloads the required JavaFX dependencies and launches `org.example.MainApp`.
+Maven télécharge les dépendances JavaFX nécessaires et lance `org.example.MainApp`.
 
-You can also build the project into a JAR with:
+Vous pouvez également construire le projet en JAR :
 
 ```bash
 mvn package
 ```
 
-The resulting archive will be located under `target/`.
+L'archive générée se trouve dans `target/`.
 
-## Security & environment
+## Installation dans IntelliJ
 
-To send e‑mails via Gmail you must enable “App passwords” on your account (or
-use the SMTP server provided by your host). Once enabled, export the following
-environment variables before running the program so that `Mailer.send()` can use
-TLS on port 465:
+1. Ouvrez IntelliJ IDEA.
+2. Choisissez **File > Open…** puis sélectionnez le fichier `pom.xml` du projet.
+3. Confirmez l'importation en tant que projet Maven et attendez le téléchargement des dépendances.
+4. Configurez les variables d'environnement `MAIL_USER` et `MAIL_PWD` dans la configuration d'exécution.
+5. Lancez la classe `org.example.MainApp` ou utilisez la commande *Run* proposée par Maven.
+
+## Sécurité et environnement
+
+Pour envoyer des e‑mails via Gmail vous devez activer les « mots de passe d'application » sur votre compte (ou
+utiliser le serveur SMTP fourni par votre hébergeur). Une fois activés, exportez les variables d'environnement suivantes avant de lancer le programme afin que `Mailer.send()` utilise TLS sur le port 465 :
 
 ```bash
 export MAIL_USER="your.address@gmail.com"
 export MAIL_PWD="the_application_password"
 ```
 
-With these variables in place the mailer should work out of the box.
+Avec ces variables en place, l'envoi de mails doit fonctionner immédiatement.
