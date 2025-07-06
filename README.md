@@ -12,6 +12,8 @@ Elle stocke les informations dans une base SQLite locale et propose une interfac
 
 - Java 17 ou supérieur
 - Maven
+- Un identifiant *client OAuth 2.0* Google (facultatif mais
+  nécessaire pour l'envoi via Gmail)
 
 ## Exécution de l'application
 
@@ -44,6 +46,11 @@ mvn package
 
 L'archive générée se trouve dans `target/`.
 
+Un bouton **Mail…** dans la fenêtre principale ouvre désormais un
+assistant de configuration. Celui‑ci permet notamment de lancer la
+procédure d'authentification OAuth 2 avec Gmail et d'éditer les modèles
+d'e‑mail.
+
 ## Installation dans IntelliJ
 
 1. Ouvrez IntelliJ IDEA.
@@ -53,7 +60,17 @@ L'archive générée se trouve dans `target/`.
 
 ## Sécurité et environnement
 
-Pour envoyer des e‑mails via Gmail vous devez activer les « mots de passe d'application » sur votre compte (ou
-utiliser le serveur SMTP fourni par votre hébergeur). Configurez ensuite les paramètres SMTP
-correspondants dans `MailPrefs` (hôte, port, utilisateur, mot de passe, etc.) pour que `Mailer.send()`
-puisse établir la connexion chiffrée sur le port adéquat.
+L'application sait désormais s'authentifier auprès de Gmail via OAuth 2. Pour
+en bénéficier vous devez créer un *client OAuth* sur
+[console.cloud.google.com](https://console.cloud.google.com) :
+
+1. activez l'API Gmail ;
+2. créez des identifiants **Client OAuth 2.0** de type *Application de bureau*
+   ou *Web* et autorisez l'URL de redirection `http://localhost` ;
+3. renseignez l'`client_id` et le `client_secret` dans la base (champ
+   `oauth_client` sous la forme `id:secret`).
+
+L'assistant ouvert par le bouton **Mail…** propose ensuite un lien « Connexion
+Gmail… » qui lance l'autorisation dans le navigateur. Le jeton généré est
+enregistré et utilisé par `Mailer.send()` sans avoir à saisir de mot de passe.
+Vous pouvez toujours utiliser un serveur SMTP externe si besoin.
