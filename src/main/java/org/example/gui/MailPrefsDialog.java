@@ -26,7 +26,7 @@ public class MailPrefsDialog extends Dialog<MailPrefs> {
         TextArea taSubjS = new TextArea(current.subjSelf());
         TextArea taBodyS = new TextArea(current.bodySelf());
 
-        GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(6);
+        GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(6); gp.setPadding(new Insets(12));
         int r=0;
         gp.addRow(r++, new Label("SMTP :"), tfHost, new Label("Port"), tfPort, cbSSL);
         gp.addRow(r++, new Label("Utilisateur :"), tfUser);
