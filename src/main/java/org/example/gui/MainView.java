@@ -108,6 +108,7 @@ public class MainView {
         root.setCenter(table);
         root.setRight(right);
         root.setBottom(bottom);
+        root.setPadding(new Insets(8));
     }
 
     private void createTable(Stage stage) {
@@ -152,7 +153,7 @@ public class MainView {
     private VBox buildDetailPane(Stage stage) {
         VBox v = new VBox(10);
         v.setId("detail-pane");
-        v.setPadding(new Insets(10));
+        v.setPadding(new Insets(12));
 
         String[] lab = {"Nom","Société","Téléphone","Email","Note","Facturation","Date contrat"};
         for (int i = 0; i < lab.length; i++) {
@@ -254,6 +255,7 @@ public class MainView {
         GridPane gp = new GridPane();
         gp.setHgap(8);
         gp.setVgap(8);
+        gp.setPadding(new Insets(12));
         String[] lab = {"Nom","Société","Téléphone","Email","Note (0-100)","Facturation","Date contrat (dd/MM/yyyy)"};
         TextField[] fields = new TextField[lab.length];
         Pattern mailRegex = Pattern.compile("[^@]+@[^@]+\\.[^@]+");
@@ -342,7 +344,7 @@ public class MainView {
         title.getStyleClass().add("title");
 
         VBox vb = new VBox(6, title);
-        vb.setPadding(new Insets(10));
+        vb.setPadding(new Insets(12));
         vb.getChildren().add(new Label("Chargement..."));
         Scene sc = new Scene(new ScrollPane(vb), 400, 400);
         ThemeManager.apply(sc);
@@ -432,7 +434,7 @@ public class MainView {
         buttons.getChildren().add(1, bMail); // après "Nouvelle facture"
 
         VBox root = new VBox(10, title, tv, buttons);
-        root.setPadding(new Insets(10));
+        root.setPadding(new Insets(12));
         Scene sc = new Scene(root, 600, 400);
         ThemeManager.apply(sc);
         win.setScene(sc);
@@ -463,7 +465,7 @@ public class MainView {
         d.setTitle("Nouvelle facture – "+p.getNom());
         d.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
 
-        GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(8);
+        GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(8); gp.setPadding(new Insets(12));
         DatePicker dpEch = new DatePicker(LocalDate.now());
         TextField tfDesc = new TextField();
         TextField tfMont = new TextField("0");
@@ -493,7 +495,7 @@ public class MainView {
         ThemeManager.apply(dlg);
         dlg.setTitle("Rappel – "+pr.getNom());
 
-        GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(10);
+        GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(10); gp.setPadding(new Insets(12));
         TextField tfDest  = new TextField(pr.getEmail());
         TextField tfSujet = new TextField("Rappel de paiement – facture du "+f.getEcheanceFr());
         TextArea  taCorps = new TextArea("""
