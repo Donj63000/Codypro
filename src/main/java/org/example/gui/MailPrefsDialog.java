@@ -11,6 +11,8 @@ import org.example.gui.ThemeManager;
 public class MailPrefsDialog extends Dialog<MailPrefs> {
     public MailPrefsDialog(MailPrefs current){
         setTitle("Paramètres e‑mail");
+        setResizable(true);
+        getDialogPane().setPrefSize(640, 500);
         getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
 
         TextField tfHost = new TextField(current.host());
@@ -23,9 +25,13 @@ public class MailPrefsDialog extends Dialog<MailPrefs> {
         Spinner<Integer> spDelay = new Spinner<>(1,240,current.delayHours());
 
         TextArea taSubjP = new TextArea(current.subjPresta());
+        taSubjP.setPrefRowCount(2);
         TextArea taBodyP = new TextArea(current.bodyPresta());
+        taBodyP.setPrefRowCount(3);
         TextArea taSubjS = new TextArea(current.subjSelf());
+        taSubjS.setPrefRowCount(2);
         TextArea taBodyS = new TextArea(current.bodySelf());
+        taBodyS.setPrefRowCount(3);
 
         GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(6); gp.setPadding(new Insets(12));
         int r=0;
