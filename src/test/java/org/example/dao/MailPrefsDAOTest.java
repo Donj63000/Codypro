@@ -49,6 +49,10 @@ public class MailPrefsDAOTest {
     void testLoadDefaultWhenEmpty() {
         MailPrefs prefs = dao.load();
         assertEquals(MailPrefs.defaultValues(), prefs);
+        assertEquals("", prefs.provider());
+        assertEquals("", prefs.oauthClient());
+        assertEquals("", prefs.oauthRefresh());
+        assertEquals(0L, prefs.oauthExpiry());
     }
 
     @Test
@@ -56,11 +60,36 @@ public class MailPrefsDAOTest {
         MailPrefs prefs = new MailPrefs(
                 "smtp.test.com", 25, false,
                 "user", "pwd",
-                "google", "client", "refresh", 123L,
+                "gmail", "client:secret", "refresh", 123L,
                 "from@test.com", "copy@test.com", 12,
                 "s1", "b1", "s2", "b2");
         dao.save(prefs);
         MailPrefs loaded = dao.load();
         assertEquals(prefs, loaded);
+    }
+
+    @Test
+    void testRefreshTokenPersists() {
+        MailPrefs prefs = new MailPrefs(
+                "smtp.test.com", 25, false,
+                "user", "pwd",
+                "gmail", "client:secret", "tok1", 100L,
+                "from@test.com", null, 12,
+                "s1", "b1", "s2", "b2");
+        dao.save(prefs);
+
+        MailPrefs updated = new MailPrefs(
+                prefs.host(), prefs.port(), prefs.ssl(),
+                prefs.user(), prefs.pwd(),
+                prefs.provider(), prefs.oauthClient(), prefs.oauthRefresh(),
+                200L,
+                prefs.from(), prefs.copyToSelf(), prefs.delayHours(),
+                prefs.subjPresta(), prefs.bodyPresta(),
+                prefs.subjSelf(), prefs.bodySelf());
+        dao.save(updated);
+
+        MailPrefs loaded = dao.load();
+        assertEquals("tok1", loaded.oauthRefresh());
+        assertEquals(200L, loaded.oauthExpiry());
     }
 }
