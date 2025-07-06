@@ -28,7 +28,7 @@
 /* ---------------- TEXT & LABELS ----------------------------------- */
 .label            { -fx-text-fill: #e6e6e6; }
 .label.title      { -fx-font-size: 17px; -fx-font-weight: bold; }
-.label.caption    { -fx-text-fill: #808080; -fx-font-size: 11px; }
+.label.caption    { -fx-text-fill: #bbbbbb; -fx-font-size: 10px; }
 
 /* ---------------- BUTTONS ----------------------------------------- */
 .button {
