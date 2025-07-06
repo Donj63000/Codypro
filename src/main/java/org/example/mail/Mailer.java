@@ -32,6 +32,25 @@ public final class Mailer {
         });
     }
 
+    /** Create a Gmail {@link Session} using OAuth2. */
+    private static Session makeSessionGmail(String user, String token) {
+        Properties p = new Properties();
+        p.put("mail.smtp.auth", "true");
+        p.put("mail.smtp.starttls.enable", "true");
+        p.put("mail.smtp.host", "smtp.gmail.com");
+        p.put("mail.smtp.port", "587");
+        p.put("mail.smtp.sasl.enable", "true");
+        p.put("mail.smtp.sasl.mechanisms", "XOAUTH2");
+        p.put("mail.smtp.auth.login.disable", "true");
+        p.put("mail.smtp.auth.plain.disable", "true");
+        return Session.getInstance(p, new Authenticator() {
+            @Override
+            protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication(user, token);
+            }
+        });
+    }
+
     /**
      * Send an e-mail using the given configuration.
      *
@@ -42,7 +61,14 @@ public final class Mailer {
      */
     public static void send(MailPrefs cfg, String to, String subject, String body)
             throws MessagingException {
-        Session s = makeSession(cfg);
+        Session s;
+        if ("gmail".equalsIgnoreCase(cfg.provider())) {
+            GoogleAuthService gs = new GoogleAuthService(cfg);
+            String token = gs.getAccessToken();
+            s = makeSessionGmail(cfg.user(), token);
+        } else {
+            s = makeSession(cfg);
+        }
         Message m = new MimeMessage(s);
         m.setFrom(new InternetAddress(cfg.from()));
         m.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to, false));
