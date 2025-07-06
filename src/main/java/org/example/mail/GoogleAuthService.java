@@ -160,7 +160,7 @@ public class GoogleAuthService {
     }
 
     private static long jsonLong(String body, String key) {
-        Matcher m = Pattern.compile("\"" + key + "\"\\s*:\\s*(\d+)").matcher(body);
+        Matcher m = Pattern.compile("\"" + key + "\"\\s*:\\s*(\\d+)").matcher(body);
         return m.find() ? Long.parseLong(m.group(1)) : 0L;
     }
 
