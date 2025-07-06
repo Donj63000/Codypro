@@ -94,6 +94,10 @@ public class DB implements AutoCloseable {
                             ssl              INTEGER NOT NULL DEFAULT 1,
                             user             TEXT,
                             pwd              TEXT,
+                            provider         TEXT,
+                            oauth_client     TEXT,
+                            oauth_refresh    TEXT,
+                            oauth_expiry     INTEGER,
                             from_addr        TEXT  NOT NULL,
                             copy_to_self     TEXT,
                             delay_hours      INTEGER NOT NULL DEFAULT 48,
@@ -109,6 +113,19 @@ public class DB implements AutoCloseable {
                     ALTER TABLE factures
                     ADD COLUMN preavis_envoye INTEGER NOT NULL DEFAULT 0
                 """);
+            } catch (SQLException ignore) {}
+            // ajout progressif des colonnes OAuth pour mail_prefs
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE mail_prefs ADD COLUMN provider TEXT");
+            } catch (SQLException ignore) {}
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE mail_prefs ADD COLUMN oauth_client TEXT");
+            } catch (SQLException ignore) {}
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE mail_prefs ADD COLUMN oauth_refresh TEXT");
+            } catch (SQLException ignore) {}
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE mail_prefs ADD COLUMN oauth_expiry INTEGER");
             } catch (SQLException ignore) {}
         } catch (Exception e) {
             throw new RuntimeException(e);

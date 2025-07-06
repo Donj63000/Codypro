@@ -23,6 +23,10 @@ public class MailPrefsDAOTest {
                     ssl INTEGER NOT NULL DEFAULT 1,
                     user TEXT,
                     pwd TEXT,
+                    provider TEXT,
+                    oauth_client TEXT,
+                    oauth_refresh TEXT,
+                    oauth_expiry INTEGER,
                     from_addr TEXT NOT NULL,
                     copy_to_self TEXT,
                     delay_hours INTEGER NOT NULL DEFAULT 48,
@@ -50,7 +54,9 @@ public class MailPrefsDAOTest {
     @Test
     void testSaveAndLoad() {
         MailPrefs prefs = new MailPrefs(
-                "smtp.test.com", 25, false, "user", "pwd",
+                "smtp.test.com", 25, false,
+                "user", "pwd",
+                "google", "client", "refresh", 123L,
                 "from@test.com", "copy@test.com", 12,
                 "s1", "b1", "s2", "b2");
         dao.save(prefs);
