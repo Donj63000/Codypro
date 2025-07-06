@@ -9,8 +9,15 @@ import org.example.mail.GoogleAuthService;
 import org.example.mail.MailPrefs;
 
 /**
- * Simple wizard to configure e-mail templates and recipients.
+ * <p>Legacy dialog that configured e-mail templates and recipients.</p>
+ * <p>
+ * It has been superseded by {@link MailSettingsDialog} which provides the
+ * same features with additional SMTP options and validation.
+ * </p>
+ *
+ * @deprecated use {@link MailSettingsDialog} instead
  */
+@Deprecated
 public class MailWizardDialog extends Dialog<MailPrefs> {
     public MailWizardDialog(MailPrefs current, MailPrefsDAO dao) {
         setTitle("Assistant e-mail");
@@ -89,11 +96,13 @@ public class MailWizardDialog extends Dialog<MailPrefs> {
         });
     }
 
-    /** Utility entry point to open the wizard */
+    /**
+     * Opens the legacy dialog.
+     *
+     * @deprecated prefer {@link MailSettingsDialog#open(Stage, MailPrefsDAO)}
+     */
+    @Deprecated
     public static void open(Stage owner, MailPrefsDAO dao) {
-        MailWizardDialog d = new MailWizardDialog(dao.load(), dao);
-        ThemeManager.apply(d);
-        d.setHeaderText("Configurer l'envoi des e-mails");
-        d.showAndWait().ifPresent(cfg -> dao.save(cfg));
+        MailSettingsDialog.open(owner, dao);
     }
 }
