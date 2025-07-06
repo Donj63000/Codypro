@@ -16,13 +16,16 @@ public class MailPrefsDAO {
         } catch(SQLException e){ throw new RuntimeException(e);}    }
     public void save(MailPrefs p){
         String sql = """
-            INSERT INTO mail_prefs(id,host,port,ssl,user,pwd,from_addr,copy_to_self,
-                                   delay_hours,subj_tpl_presta,body_tpl_presta,
+            INSERT INTO mail_prefs(id,host,port,ssl,user,pwd,provider,oauth_client,oauth_refresh,oauth_expiry,
+                                   from_addr,copy_to_self,delay_hours,subj_tpl_presta,body_tpl_presta,
                                    subj_tpl_self,body_tpl_self)
-            VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(id) DO UPDATE SET
               host=excluded.host,port=excluded.port,ssl=excluded.ssl,
-              user=excluded.user,pwd=excluded.pwd,from_addr=excluded.from_addr,
+              user=excluded.user,pwd=excluded.pwd,
+              provider=excluded.provider,oauth_client=excluded.oauth_client,
+              oauth_refresh=excluded.oauth_refresh,oauth_expiry=excluded.oauth_expiry,
+              from_addr=excluded.from_addr,
               copy_to_self=excluded.copy_to_self,delay_hours=excluded.delay_hours,
               subj_tpl_presta=excluded.subj_tpl_presta,body_tpl_presta=excluded.body_tpl_presta,
               subj_tpl_self=excluded.subj_tpl_self,body_tpl_self=excluded.body_tpl_self
