@@ -5,6 +5,7 @@ import javafx.scene.layout.GridPane;
 import javafx.stage.Stage;
 import org.example.dao.MailPrefsDAO;
 import org.example.mail.MailPrefs;
+import org.example.gui.ThemeManager;
 
 public class MailPrefsDialog extends Dialog<MailPrefs> {
     public MailPrefsDialog(MailPrefs current){
@@ -25,7 +26,7 @@ public class MailPrefsDialog extends Dialog<MailPrefs> {
         TextArea taSubjS = new TextArea(current.subjSelf());
         TextArea taBodyS = new TextArea(current.bodySelf());
 
-        GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(6);
+        GridPane gp = new GridPane(); gp.setHgap(8); gp.setVgap(6); gp.setPadding(new Insets(12));
         int r=0;
         gp.addRow(r++, new Label("SMTP :"), tfHost, new Label("Port"), tfPort, cbSSL);
         gp.addRow(r++, new Label("Utilisateur :"), tfUser);
@@ -63,6 +64,7 @@ public class MailPrefsDialog extends Dialog<MailPrefs> {
     /** sucré-salé : test d'envoi live */
     public static void open(Stage owner, MailPrefsDAO dao){
         MailPrefsDialog d = new MailPrefsDialog(dao.load());
+        ThemeManager.apply(d);
         d.setHeaderText("Configurer le serveur SMTP, modèles et délai.");
         d.showAndWait().ifPresent(cfg -> dao.save(cfg));
     }
