@@ -46,10 +46,11 @@ mvn package
 
 L'archive générée se trouve dans `target/`.
 
-Un bouton **Mail…** dans la fenêtre principale ouvre désormais un
-assistant de configuration. Celui‑ci permet notamment de lancer la
-procédure d'authentification OAuth 2 avec Gmail et d'éditer les modèles
-d'e‑mail.
+Un bouton **Mail…** dans la fenêtre principale ouvre désormais la boîte de
+dialogue `MailSettingsDialog`. Celle‑ci propose un lien **Connexion Gmail…**
+pour autoriser l'envoi depuis votre compte et permet d'éditer les modèles
+d'e‑mail. Les options SMTP avancées (hôte, port, SSL, identifiants, etc.)
+y sont également accessibles pour utiliser un autre fournisseur.
 
 ## Installation dans IntelliJ
 
@@ -70,7 +71,8 @@ en bénéficier vous devez créer un *client OAuth* sur
 3. renseignez l'`client_id` et le `client_secret` dans la base (champ
    `oauth_client` sous la forme `id:secret`).
 
-L'assistant ouvert par le bouton **Mail…** propose ensuite un lien « Connexion
-Gmail… » qui lance l'autorisation dans le navigateur. Le jeton généré est
-enregistré et utilisé par `Mailer.send()` sans avoir à saisir de mot de passe.
-Vous pouvez toujours utiliser un serveur SMTP externe si besoin.
+La boîte `MailSettingsDialog` contient le lien « Connexion Gmail… » qui lance
+l'autorisation dans votre navigateur. Une fois validée, le jeton est mémorisé et
+utilisé par `Mailer.send()` sans saisie de mot de passe. Si vous préférez un
+autre serveur, indiquez simplement ses paramètres SMTP dans la même boîte de
+dialogue.
