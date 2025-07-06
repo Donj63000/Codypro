@@ -21,7 +21,7 @@ import org.example.pdf.PDF;
 import org.example.mail.Mailer;
 import org.example.mail.MailPrefs;
 import org.example.dao.MailPrefsDAO;
-import org.example.gui.MailPrefsDialog;
+import org.example.gui.MailWizardDialog;
 import org.example.gui.ThemeManager;
 
 import java.nio.file.Path;
@@ -239,7 +239,7 @@ public class MainView {
             }
         });
 
-        bPrefsMail.setOnAction(e -> MailPrefsDialog.open(stage, mailPrefsDao));
+        bPrefsMail.setOnAction(e -> MailWizardDialog.open(stage, mailPrefsDao));
         HBox hb = new HBox(16, bAdd, bEdit, bDel, bService, bHist, bFact, bPDF, bPDFAll, bPrefsMail);
         hb.setPadding(new Insets(10));
         hb.setAlignment(Pos.CENTER_LEFT);
