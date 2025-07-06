@@ -2,6 +2,7 @@ package org.example.gui;
 
 import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
+import javafx.geometry.Insets;
 import javafx.stage.Stage;
 import org.example.dao.MailPrefsDAO;
 import org.example.mail.MailPrefs;
