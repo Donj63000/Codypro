@@ -31,6 +31,12 @@ public class GoogleAuthService {
         this.prefs = dao.load();
     }
 
+    /** Construct using existing preferences without persistence. */
+    public GoogleAuthService(MailPrefs prefs) {
+        this.dao = null;
+        this.prefs = prefs;
+    }
+
     /**
      * Launch interactive OAuth flow in the user's browser and store
      * the resulting refresh token and expiry.
@@ -78,7 +84,7 @@ public class GoogleAuthService {
             long exp = jsonLong(resp.body(), "expires_in");
             long expiry = System.currentTimeMillis() / 1000 + exp;
             prefs = updatePrefs(refresh, expiry);
-            dao.save(prefs);
+            if (dao != null) dao.save(prefs);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -116,7 +122,7 @@ public class GoogleAuthService {
             long exp = jsonLong(resp.body(), "expires_in");
             long expiry = System.currentTimeMillis() / 1000 + exp;
             prefs = updatePrefs(refresh, expiry);
-            dao.save(prefs);
+            if (dao != null) dao.save(prefs);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -162,7 +168,7 @@ public class GoogleAuthService {
         return new MailPrefs(
                 prefs.host(), prefs.port(), prefs.ssl(),
                 prefs.user(), prefs.pwd(),
-                "google", prefs.oauthClient(),
+                "gmail", prefs.oauthClient(),
                 refresh, expiry,
                 prefs.from(), prefs.copyToSelf(), prefs.delayHours(),
                 prefs.subjPresta(), prefs.bodyPresta(),
