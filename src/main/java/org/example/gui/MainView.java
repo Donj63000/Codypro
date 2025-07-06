@@ -193,9 +193,11 @@ public class MainView {
         Button bPDF = new Button("Fiche PDF");
         Button bPDFAll = new Button("PDF global");
         Button bPrefsMail = new Button("Mail…");
+        Button bMailPrefs = bPrefsMail;
 
         bAdd.getStyleClass().add("accent");
         bFact.getStyleClass().add("accent");
+        bMailPrefs.getStyleClass().add("accent");
 
         bAdd.setOnAction(e -> editDialog(null));
         bEdit.setOnAction(e -> editDialog(table.getSelectionModel().getSelectedItem()));
