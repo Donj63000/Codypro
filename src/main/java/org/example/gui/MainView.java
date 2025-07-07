@@ -193,8 +193,7 @@ public class MainView {
         Button bFact = new Button("Factures");
         Button bPDF = new Button("Fiche PDF");
         Button bPDFAll = new Button("PDF global");
-        Button bPrefsMail = new Button("Mail…");
-        Button bMailPrefs = bPrefsMail;
+        Button bMailPrefs = new Button("Paramètres e-mail…");
 
         bAdd.getStyleClass().add("accent");
         bFact.getStyleClass().add("accent");
@@ -239,8 +238,8 @@ public class MainView {
             }
         });
 
-        bPrefsMail.setOnAction(e -> MailQuickSetupDialog.open(stage, mailPrefsDao));
-        HBox hb = new HBox(16, bAdd, bEdit, bDel, bService, bHist, bFact, bPDF, bPDFAll, bPrefsMail);
+        bMailPrefs.setOnAction(e -> MailQuickSetupDialog.open(stage, mailPrefsDao));
+        HBox hb = new HBox(16, bAdd, bEdit, bDel, bService, bHist, bFact, bPDF, bPDFAll, bMailPrefs);
         hb.setPadding(new Insets(10));
         hb.setAlignment(Pos.CENTER_LEFT);
         return hb;
