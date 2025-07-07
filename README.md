@@ -77,3 +77,9 @@ La boîte `MailQuickSetupDialog` contient le lien « Connexion Gmail… » ou
 validée, le jeton est mémorisé et utilisé par `Mailer.send()` sans saisie de mot
 de passe. Si vous préférez un autre serveur, ouvrez la section avancée et saisissez
 simplement ses paramètres SMTP.
+
+Un mode avancé d'authentification Gmail est maintenant disponible. Il repose
+sur les bibliothèques officielles Google (`GmailOAuth2Service`) et permet de
+générer un `refresh_token` permanent puis un `access_token` à la volée pour les
+envois. Sélectionnez **Gmail OAuth2** dans la boîte de configuration rapide et
+cliquez sur *Se connecter à Google* pour autoriser l'application.
