@@ -8,7 +8,7 @@ import org.example.model.Prestataire;
 
 import org.example.mail.OAuthService;
 import org.example.mail.OAuthServiceFactory;
-import org.example.mail.SmtpPreset;
+import org.example.mail.GoogleAuthService;
 
 import java.util.*;
 
@@ -49,6 +49,7 @@ public final class Mailer {
         p.put("mail.smtp.port", String.valueOf(cfg.port()));
         p.put("mail.smtp.sasl.enable", "true");
         p.put("mail.smtp.sasl.mechanisms", "XOAUTH2");
+        p.put("mail.smtp.auth.mechanisms", "XOAUTH2");
         p.put("mail.smtp.auth.login.disable", "true");
         p.put("mail.smtp.auth.plain.disable", "true");
         return Session.getInstance(p, new Authenticator() {
@@ -70,14 +71,22 @@ public final class Mailer {
     public static void send(MailPrefs cfg, String to, String subject, String body)
             throws MessagingException {
         Session s;
-        SmtpPreset preset = SmtpPreset.byProvider(cfg.provider());
-        if (preset != null && preset.oauth()) {
-            OAuthService svc = OAuthServiceFactory.create(cfg);
-            if (svc == null) throw new MessagingException("Unsupported OAuth provider: " + cfg.provider());
-            String token = svc.getAccessToken();
-            s = makeSessionOAuth(cfg, token);
-        } else {
-            s = makeSession(cfg);
+        String provider = cfg.provider() == null ? "" : cfg.provider().toLowerCase();
+        switch (provider) {
+            case "gmail" -> {
+                OAuthService svc = new GoogleAuthService(cfg);
+                String token = svc.getAccessToken();
+                s = makeSessionOAuth(cfg, token);
+            }
+            default -> {
+                OAuthService svc = OAuthServiceFactory.create(cfg);
+                if (svc != null) {
+                    String token = svc.getAccessToken();
+                    s = makeSessionOAuth(cfg, token);
+                } else {
+                    s = makeSession(cfg);
+                }
+            }
         }
         Message m = new MimeMessage(s);
         m.setFrom(new InternetAddress(cfg.from()));
