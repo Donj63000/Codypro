@@ -46,11 +46,12 @@ mvn package
 
 L'archive générée se trouve dans `target/`.
 
-Un bouton **Mail…** dans la fenêtre principale ouvre désormais la boîte de
-dialogue `MailSettingsDialog`. Celle‑ci propose un lien **Connexion Gmail…**
-pour autoriser l'envoi depuis votre compte et permet d'éditer les modèles
-d'e‑mail. Les options SMTP avancées (hôte, port, SSL, identifiants, etc.)
-y sont également accessibles pour utiliser un autre fournisseur.
+Un bouton **Mail…** dans la fenêtre principale ouvre la boîte de
+configuration rapide `MailQuickSetupDialog`. Celle‑ci propose une liste de
+fournisseurs (Gmail, Outlook, Personnalisé), un lien **Connexion Gmail…** ou
+**Connexion Outlook…** pour l'authentification OAuth et masque par défaut la
+section avancée (hôte, port, SSL, identifiants, etc.). Vous pouvez toujours
+déployer cette section pour saisir manuellement un autre serveur SMTP.
 
 ## Installation dans IntelliJ
 
@@ -71,8 +72,8 @@ en bénéficier vous devez créer un *client OAuth* sur
 3. renseignez l'`client_id` et le `client_secret` dans la base (champ
    `oauth_client` sous la forme `id:secret`).
 
-La boîte `MailSettingsDialog` contient le lien « Connexion Gmail… » qui lance
-l'autorisation dans votre navigateur. Une fois validée, le jeton est mémorisé et
-utilisé par `Mailer.send()` sans saisie de mot de passe. Si vous préférez un
-autre serveur, indiquez simplement ses paramètres SMTP dans la même boîte de
-dialogue.
+La boîte `MailQuickSetupDialog` contient le lien « Connexion Gmail… » ou
+« Connexion Outlook… » qui lance l'autorisation dans votre navigateur. Une fois
+validée, le jeton est mémorisé et utilisé par `Mailer.send()` sans saisie de mot
+de passe. Si vous préférez un autre serveur, ouvrez la section avancée et saisissez
+simplement ses paramètres SMTP.
