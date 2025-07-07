@@ -11,9 +11,11 @@ import org.example.mail.Mailer;
 import org.example.mail.MailPrefs;
 
 /**
- * Dialog to edit mail server configuration and templates.
- * Provides validation and a button to send a test e-mail.
+ * <p>Legacy dialog to edit mail server configuration and templates.</p>
+ * <p>Replaced by {@link MailQuickSetupDialog} which offers additional
+ * features and OAuth2 support.</p>
  */
+@Deprecated
 public class MailSettingsDialog extends Dialog<MailPrefs> {
     public MailSettingsDialog(MailPrefs current) {
         setTitle("Paramètres e-mail");

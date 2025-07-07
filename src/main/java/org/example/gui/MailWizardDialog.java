@@ -11,11 +11,11 @@ import org.example.mail.MailPrefs;
 /**
  * <p>Legacy dialog that configured e-mail templates and recipients.</p>
  * <p>
- * It has been superseded by {@link MailSettingsDialog} which provides the
- * same features with additional SMTP options and validation.
+ * It has been superseded by {@link MailQuickSetupDialog} which provides the
+ * same features with additional SMTP options and OAuth2 support.
  * </p>
  *
- * @deprecated use {@link MailSettingsDialog} instead
+ * @deprecated use {@link MailQuickSetupDialog} instead
  */
 @Deprecated
 public class MailWizardDialog extends Dialog<MailPrefs> {
