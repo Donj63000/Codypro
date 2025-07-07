@@ -161,6 +161,7 @@ public class MicrosoftAuthService implements OAuthService {
                 "outlook", prefs.oauthClient(),
                 refresh, expiry,
                 prefs.from(), prefs.copyToSelf(), prefs.delayHours(),
+                prefs.style(),
                 prefs.subjPresta(), prefs.bodyPresta(),
                 prefs.subjSelf(), prefs.bodySelf()
         );

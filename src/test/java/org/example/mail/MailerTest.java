@@ -19,6 +19,7 @@ public class MailerTest {
                 "user@example.com", "",
                 "outlook", "", "", 0L,
                 "from@example.com", "", cfg.delayHours(),
+                cfg.style(),
                 cfg.subjPresta(), cfg.bodyPresta(),
                 cfg.subjSelf(), cfg.bodySelf()
         );
