@@ -128,13 +128,14 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         ok.disableProperty().bind(invalid);
 
         bTest.setOnAction(ev -> {
+            MailPrefs base = MailPrefs.fromPreset(cbProv.getValue());
             MailPrefs tmp = new MailPrefs(
                     tfHost.getText(),
                     Integer.parseInt(tfPort.getText()),
                     cbSSL.isSelected(),
                     tfUser.getText(),
                     tfPwd.getText(),
-                    cbProv.getValue().provider(),
+                    base.provider(),
                     prefsBox[0].oauthClient(),
                     prefsBox[0].oauthRefresh(),
                     prefsBox[0].oauthExpiry(),
@@ -166,13 +167,14 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
 
         setResultConverter(bt -> {
             if (bt == ButtonType.OK) {
+                MailPrefs base = MailPrefs.fromPreset(cbProv.getValue());
                 return new MailPrefs(
                         tfHost.getText(),
                         Integer.parseInt(tfPort.getText()),
                         cbSSL.isSelected(),
                         tfUser.getText(),
                         tfPwd.getText(),
-                        cbProv.getValue().provider(),
+                        base.provider(),
                         prefsBox[0].oauthClient(),
                         prefsBox[0].oauthRefresh(),
                         prefsBox[0].oauthExpiry(),
