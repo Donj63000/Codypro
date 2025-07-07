@@ -36,6 +36,23 @@ public record MailPrefs(
         );
     }
 
+    /**
+     * Create a new configuration from an SMTP preset. Message templates and
+     * delay use the default values while all user related fields are empty.
+     */
+    public static MailPrefs fromPreset(SmtpPreset pre) {
+        MailPrefs def = defaultValues();
+        return new MailPrefs(
+                pre.host(), pre.port(), pre.ssl(),
+                "", "",
+                pre.provider(), "", "", 0L,
+                "", "",
+                def.delayHours(),
+                def.subjPresta(), def.bodyPresta(),
+                def.subjSelf(), def.bodySelf()
+        );
+    }
+
     public static MailPrefs fromRS(ResultSet rs) throws SQLException {
         String provider = rs.getString("provider");
         if(provider == null) provider = "";

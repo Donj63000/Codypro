@@ -1,6 +1,7 @@
 package org.example.dao;
 
 import org.example.mail.MailPrefs;
+import org.example.mail.SmtpPreset;
 import org.junit.jupiter.api.*;
 
 import java.sql.*;
@@ -46,10 +47,11 @@ public class MailPrefsDAOTest {
     }
 
     @Test
-    void testLoadDefaultWhenEmpty() {
+    void testLoadPresetWhenEmpty() {
         MailPrefs prefs = dao.load();
-        assertEquals(MailPrefs.defaultValues(), prefs);
-        assertEquals("", prefs.provider());
+        MailPrefs expected = MailPrefs.fromPreset(SmtpPreset.PRESETS[0]);
+        assertEquals(expected, prefs);
+        assertEquals("custom", prefs.provider());
         assertEquals("", prefs.oauthClient());
         assertEquals("", prefs.oauthRefresh());
         assertEquals(0L, prefs.oauthExpiry());
