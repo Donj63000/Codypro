@@ -88,6 +88,7 @@ public class MailWizardDialog extends Dialog<MailPrefs> {
                         base.oauthRefresh(), base.oauthExpiry(),
                         tfFrom.getText(), tfCopy.getText(),
                         spDelay.getValue(),
+                        base.style(),
                         taSubjP.getText(), taBodyP.getText(),
                         taSubjS.getText(), taBodyS.getText()
                 );

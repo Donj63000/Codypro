@@ -17,30 +17,25 @@ import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Helper for Google OAuth authentication.
- */
-public class GoogleAuthService implements OAuthService {
+/** Helper for Microsoft Outlook/Office365 OAuth authentication. */
+public class MicrosoftAuthService implements OAuthService {
     private final MailPrefsDAO dao;
     private MailPrefs prefs;
     private final HttpClient http = HttpClient.newHttpClient();
     private String accessToken;
 
-    public GoogleAuthService(MailPrefsDAO dao) {
+    public MicrosoftAuthService(MailPrefsDAO dao) {
         this.dao = dao;
         this.prefs = dao.load();
     }
 
     /** Construct using existing preferences without persistence. */
-    public GoogleAuthService(MailPrefs prefs) {
+    public MicrosoftAuthService(MailPrefs prefs) {
         this.dao = null;
         this.prefs = prefs;
     }
 
-    /**
-     * Launch interactive OAuth flow in the user's browser and store
-     * the resulting refresh token and expiry.
-     */
+    @Override
     public synchronized void interactiveAuth() {
         String[] client = parseClient(prefs.oauthClient());
         if (client[0].isEmpty()) throw new IllegalStateException("Missing client id");
@@ -58,18 +53,17 @@ public class GoogleAuthService implements OAuthService {
             server.start();
             int port = server.getAddress().getPort();
             String redirect = "http://localhost:" + port + "/oauth";
-            String url = "https://accounts.google.com/o/oauth2/v2/auth" +
+            String url = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize" +
                     "?response_type=code" +
                     "&client_id=" + enc(client[0]) +
                     "&redirect_uri=" + enc(redirect) +
-                    "&scope=" + enc("https://mail.google.com/") +
-                    "&access_type=offline" +
+                    "&scope=" + enc("offline_access https://outlook.office.com/SMTP.Send") +
                     "&prompt=consent";
             Desktop.getDesktop().browse(URI.create(url));
             String code = codeFuture.join();
             server.stop(0);
 
-            HttpRequest req = HttpRequest.newBuilder(URI.create("https://oauth2.googleapis.com/token"))
+            HttpRequest req = HttpRequest.newBuilder(URI.create("https://login.microsoftonline.com/common/oauth2/v2.0/token"))
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(
                             "code=" + enc(code) +
@@ -90,9 +84,7 @@ public class GoogleAuthService implements OAuthService {
         }
     }
 
-    /**
-     * Return a valid access token, refreshing it when necessary.
-     */
+    @Override
     public synchronized String getAccessToken() {
         long now = System.currentTimeMillis() / 1000;
         if (accessToken == null || now >= prefs.oauthExpiry() - 60) {
@@ -101,15 +93,13 @@ public class GoogleAuthService implements OAuthService {
         return accessToken;
     }
 
-    /**
-     * Refresh the access token using the stored refresh token.
-     */
+    @Override
     public synchronized void refreshAccessToken() {
         String refresh = prefs.oauthRefresh();
         if (refresh.isBlank()) throw new IllegalStateException("No refresh token");
         String[] client = parseClient(prefs.oauthClient());
         try {
-            HttpRequest req = HttpRequest.newBuilder(URI.create("https://oauth2.googleapis.com/token"))
+            HttpRequest req = HttpRequest.newBuilder(URI.create("https://login.microsoftonline.com/common/oauth2/v2.0/token"))
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(
                             "client_id=" + enc(client[0]) +
@@ -168,7 +158,7 @@ public class GoogleAuthService implements OAuthService {
         return new MailPrefs(
                 prefs.host(), prefs.port(), prefs.ssl(),
                 prefs.user(), prefs.pwd(),
-                "gmail", prefs.oauthClient(),
+                "outlook", prefs.oauthClient(),
                 refresh, expiry,
                 prefs.from(), prefs.copyToSelf(), prefs.delayHours(),
                 prefs.style(),

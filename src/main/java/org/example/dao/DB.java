@@ -101,6 +101,7 @@ public class DB implements AutoCloseable {
                             from_addr        TEXT  NOT NULL,
                             copy_to_self     TEXT,
                             delay_hours      INTEGER NOT NULL DEFAULT 48,
+                            style            TEXT  NOT NULL DEFAULT 'fr',
                             subj_tpl_presta  TEXT  NOT NULL,
                             body_tpl_presta  TEXT  NOT NULL,
                             subj_tpl_self    TEXT  NOT NULL,
@@ -126,6 +127,9 @@ public class DB implements AutoCloseable {
             } catch (SQLException ignore) {}
             try (Statement st = conn.createStatement()) {
                 st.executeUpdate("ALTER TABLE mail_prefs ADD COLUMN oauth_expiry INTEGER");
+            } catch (SQLException ignore) {}
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE mail_prefs ADD COLUMN style TEXT DEFAULT 'fr'");
             } catch (SQLException ignore) {}
         } catch (Exception e) {
             throw new RuntimeException(e);

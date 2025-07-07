@@ -17,7 +17,7 @@ import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class GoogleAuthServiceTest {
+public class MicrosoftAuthServiceTest {
     private Connection conn;
     private MailPrefsDAO dao;
 
@@ -50,9 +50,9 @@ public class GoogleAuthServiceTest {
         }
         dao = new MailPrefsDAO(conn);
         MailPrefs prefs = new MailPrefs(
-                "smtp.gmail.com", 465, true,
+                "smtp.office365.com", 587, false,
                 "user", "pwd",
-                "gmail", "id:secret", "refresh", 0L,
+                "outlook", "id:secret", "refresh", 0L,
                 "from@test.com", null, 48,
                 "fr",
                 "s1", "b1", "s2", "b2");
@@ -66,14 +66,13 @@ public class GoogleAuthServiceTest {
 
     @Test
     void testTokenRefresh() throws Exception {
-        GoogleAuthService gs = new GoogleAuthService(dao);
-        // inject stub client
+        MicrosoftAuthService ms = new MicrosoftAuthService(dao);
         StubHttpClient stub = new StubHttpClient("{\"access_token\":\"tok\",\"expires_in\":3600}");
-        Field f = GoogleAuthService.class.getDeclaredField("http");
+        Field f = MicrosoftAuthService.class.getDeclaredField("http");
         f.setAccessible(true);
-        f.set(gs, stub);
+        f.set(ms, stub);
 
-        String token = gs.getAccessToken();
+        String token = ms.getAccessToken();
         assertEquals("tok", token);
         assertNotNull(stub.lastRequest);
         assertTrue(stub.lastRequest.bodyPublisher().isPresent());
