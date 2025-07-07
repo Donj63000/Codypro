@@ -2,9 +2,10 @@ package org.example.gui;
 
 import javafx.application.Platform;
 import javafx.embed.swing.JFXPanel;
-import javafx.scene.control.ButtonType;
 import org.example.dao.MailPrefsDAO;
 import org.example.mail.MailPrefs;
+import org.example.mail.autodetect.AutoConfigProvider;
+import org.example.mail.autodetect.AutoConfigResult;
 import org.junit.jupiter.api.*;
 
 import java.sql.Connection;
@@ -15,14 +16,12 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class MailQuickSetupDialogTest {
+public class MailQuickSetupDialogAutoTest {
     private Connection conn;
     private MailPrefsDAO dao;
 
     @BeforeAll
-    static void initJfx() {
-        new JFXPanel();
-    }
+    static void initJfx() { new JFXPanel(); }
 
     @BeforeEach
     void setup() throws Exception {
@@ -55,44 +54,38 @@ public class MailQuickSetupDialogTest {
     }
 
     @AfterEach
-    void tearDown() throws Exception {
-        conn.close();
-    }
+    void tearDown() throws Exception { conn.close(); }
 
     @Test
-    void testDialogResultPersists() throws Exception {
-        MailPrefs initial = MailPrefs.defaultValues();
-        dao.save(initial);
-
+    void testAutoDiscoveryPopulatesFields() throws Exception {
+        MailPrefs prefs = MailPrefs.defaultValues();
+        dao.save(prefs);
+        StubProvider stub = new StubProvider();
+        stub.result = new AutoConfigResult("auto.smtp", 2525, false);
         CountDownLatch latch = new CountDownLatch(1);
         Platform.runLater(() -> {
-            MailQuickSetupDialog d = new MailQuickSetupDialog(initial, dao, new org.example.mail.autodetect.DefaultAutoConfigProvider());
-            MailPrefs res = d.getResultConverter().call(ButtonType.OK);
-            dao.save(res);
-            latch.countDown();
+            MailQuickSetupDialog d = new MailQuickSetupDialog(prefs, dao, stub);
+            d.fromField().setText("user@test.com");
+            new Thread(() -> {
+                try { stub.called.await(); Thread.sleep(50); } catch(Exception ignore) {}
+                Platform.runLater(() -> {
+                    assertEquals("auto.smtp", d.hostField().getText());
+                    assertEquals("2525", d.portField().getText());
+                    assertFalse(d.sslBox().isSelected());
+                    latch.countDown();
+                });
+            }).start();
         });
-        assertTrue(latch.await(5, TimeUnit.SECONDS));
-
-        MailPrefs stored = dao.load();
-        assertEquals(initial.host(), stored.host());
+        assertTrue(latch.await(3, TimeUnit.SECONDS));
     }
 
-    @Test
-    void testTemplatesSwitchWithStyle() throws Exception {
-        MailPrefs initial = MailPrefs.defaultValues();
-        dao.save(initial);
-
-        CountDownLatch latch = new CountDownLatch(1);
-        final MailPrefs[] result = new MailPrefs[1];
-        Platform.runLater(() -> {
-            MailQuickSetupDialog d = new MailQuickSetupDialog(initial, dao, new org.example.mail.autodetect.DefaultAutoConfigProvider());
-            d.styleCombo().getSelectionModel().select("en");
-            result[0] = d.getResultConverter().call(ButtonType.OK);
-            latch.countDown();
-        });
-        assertTrue(latch.await(5, TimeUnit.SECONDS));
-
-        assertEquals("en", result[0].style());
-        assertEquals(MailPrefs.TEMPLATE_SETS.get("en")[0], result[0].subjPresta());
+    private static class StubProvider implements AutoConfigProvider {
+        AutoConfigResult result;
+        CountDownLatch called = new CountDownLatch(1);
+        @Override
+        public AutoConfigResult discover(String email) {
+            called.countDown();
+            return result;
+        }
     }
 }
