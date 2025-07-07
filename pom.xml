@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Projet : Gestion des Prestataires + Drop Calc
-  Auteur  : Rochias – service Dév interne
-  Licence : Code interne Rochias – aucune lib sous licence virale (AGPL)
+  Auteur  : Service dév interne
+  Licence : Code interne — aucune lib sous licence virale (AGPL)
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -10,7 +10,7 @@
                              https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.rochias</groupId>
+    <groupId>org.example</groupId>
     <artifactId>prestataires-manager</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
@@ -20,6 +20,8 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <javafx.version>21.0.2</javafx.version>
+        <junit.jupiter.version>5.10.1</junit.jupiter.version>
+        <surefire.plugin.version>3.2.2</surefire.plugin.version>
         <javafx.maven.plugin.version>0.0.8</javafx.maven.plugin.version>
     </properties>
 
@@ -73,6 +75,13 @@
             <artifactId>google-api-services-gmail</artifactId>
             <version>v1-rev20240205-2.0.0</version>
         </dependency>
+        <!-- JUnit 5 for tests -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.jupiter.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <!-- Pour exécuter facilement : mvn javafx:run -->
@@ -85,6 +94,11 @@
                 <configuration>
                     <mainClass>org.example.MainApp</mainClass>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${surefire.plugin.version}</version>
             </plugin>
         </plugins>
     </build>

@@ -46,7 +46,7 @@ mvn package
 
 L'archive générée se trouve dans `target/`.
 
-Un bouton **Mail…** dans la fenêtre principale ouvre la boîte de
+Un bouton **Paramètres e-mail…** dans la fenêtre principale ouvre la boîte de
 configuration rapide `MailQuickSetupDialog`. Celle‑ci propose une liste de
 fournisseurs (Gmail, Outlook, Personnalisé), un lien **Connexion Gmail…** ou
 **Connexion Outlook…** pour l'authentification OAuth et masque par défaut la
