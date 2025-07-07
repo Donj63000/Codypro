@@ -13,6 +13,10 @@ import org.example.mail.GoogleAuthService;
 import org.example.mail.MailPrefs;
 import org.example.mail.Mailer;
 import org.example.mail.SmtpPreset;
+import org.example.mail.autodetect.AutoConfigProvider;
+import org.example.mail.autodetect.AutoConfigResult;
+import org.example.mail.autodetect.DefaultAutoConfigProvider;
+import javafx.concurrent.Task;
 
 /** Dialog providing simplified e‑mail configuration using provider presets. */
 public class MailQuickSetupDialog extends Dialog<MailPrefs> {
@@ -21,11 +25,32 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
     private final TextArea taBodyP;
     private final TextArea taSubjS;
     private final TextArea taBodyS;
+    private final AutoConfigProvider autoProv;
+    private final CheckBox cbAuto;
+
+    // fields exposed for tests
+    private TextField tfHost;
+    private TextField tfPort;
+    private CheckBox cbSSL;
+    private TextField tfFrom;
 
     /** Accessor used in tests. */
     ComboBox<String> styleCombo() { return cbStyle; }
+    /** Accessor used in tests. */
+    TextField hostField() { return tfHost; }
+    /** Accessor used in tests. */
+    TextField portField() { return tfPort; }
+    /** Accessor used in tests. */
+    CheckBox sslBox() { return cbSSL; }
+    /** Accessor used in tests. */
+    TextField fromField() { return tfFrom; }
 
     public MailQuickSetupDialog(MailPrefs current, MailPrefsDAO dao) {
+        this(current, dao, new DefaultAutoConfigProvider());
+    }
+
+    public MailQuickSetupDialog(MailPrefs current, MailPrefsDAO dao, AutoConfigProvider provider) {
+        this.autoProv = provider;
         setTitle("Paramètres e-mail");
         setResizable(true);
         getDialogPane().setPrefSize(680, 520);
@@ -38,11 +63,11 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         if (sel == null) sel = SmtpPreset.PRESETS[0];
         cbProv.getSelectionModel().select(sel);
 
-        TextField tfHost = new TextField(current.host());
+        tfHost = new TextField(current.host());
         tfHost.setTooltip(new Tooltip("Serveur SMTP"));
-        TextField tfPort = new TextField(String.valueOf(current.port()));
+        tfPort = new TextField(String.valueOf(current.port()));
         tfPort.setTooltip(new Tooltip("Port SMTP"));
-        CheckBox cbSSL = new CheckBox("SSL");
+        cbSSL = new CheckBox("SSL");
         cbSSL.setSelected(current.ssl());
         cbSSL.setTooltip(new Tooltip("Connexion sécurisée"));
         TextField tfUser = new TextField(current.user());
@@ -50,12 +75,15 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         PasswordField tfPwd = new PasswordField();
         tfPwd.setText(current.pwd());
         tfPwd.setTooltip(new Tooltip("Mot de passe SMTP"));
-        TextField tfFrom = new TextField(current.from());
+        tfFrom = new TextField(current.from());
         tfFrom.setTooltip(new Tooltip("Adresse expéditeur"));
         TextField tfCopy = new TextField(current.copyToSelf());
         tfCopy.setTooltip(new Tooltip("Copie des préavis"));
         Spinner<Integer> spDelay = new Spinner<>(1, 240, current.delayHours());
         spDelay.setTooltip(new Tooltip("Délai pré-avis interne (heures)"));
+
+        cbAuto = new CheckBox("Auto-découverte serveur");
+        cbAuto.setSelected(true);
 
         Button bOAuth = new Button("Connexion Gmail...");
         bOAuth.getStyleClass().add("accent");
@@ -76,6 +104,30 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
 
         Button bTest = new Button("Tester l'envoi");
         bTest.getStyleClass().add("accent");
+
+        // auto discovery when sender address changes
+        final String[] lastDomain = {""};
+        tfFrom.textProperty().addListener((o, p, n) -> {
+            int at = n.indexOf('@');
+            if (!cbAuto.isSelected() || at < 0 || at == n.length() - 1) return;
+            String dom = n.substring(at + 1);
+            if (dom.equals(lastDomain[0])) return;
+            lastDomain[0] = dom;
+            Task<AutoConfigResult> task = new Task<>() {
+                @Override protected AutoConfigResult call() throws Exception {
+                    return autoProv.discover(n);
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                AutoConfigResult res = task.getValue();
+                if (res != null && cbAuto.isSelected()) {
+                    tfHost.setText(res.host());
+                    tfPort.setText(String.valueOf(res.port()));
+                    cbSSL.setSelected(res.ssl());
+                }
+            });
+            new Thread(task, "smtp-auto").start();
+        });
 
         // react to provider change
         cbProv.getSelectionModel().selectedItemProperty().addListener((o, p, n) -> {
@@ -101,6 +153,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         gp.addRow(r++, new Label("Adresse expéditeur :"), tfFrom);
         gp.addRow(r++, new Label("Copie à (nous) :"), tfCopy);
         gp.addRow(r++, new Label("Délai pré-avis (h) :"), spDelay);
+        gp.addRow(r++, cbAuto);
         gp.add(bOAuth, 0, r++, 5, 1);
         gp.add(bTest, 0, r++, 5, 1);
 
@@ -217,7 +270,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
 
     /** Open the dialog and save the preferences if confirmed. */
     public static void open(Stage owner, MailPrefsDAO dao) {
-        MailQuickSetupDialog d = new MailQuickSetupDialog(dao.load(), dao);
+        MailQuickSetupDialog d = new MailQuickSetupDialog(dao.load(), dao, new DefaultAutoConfigProvider());
         ThemeManager.apply(d);
         d.initOwner(owner);
         d.setHeaderText("Configurer le serveur SMTP, modèles et délai.");
