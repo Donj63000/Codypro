@@ -55,12 +55,23 @@
             <version>1.3.32</version>
         </dependency>
 
-        <!-- Jakarta Mail API – version 2.0.1 existe sur Maven Central -->
+        <!-- Jakarta Mail API -->
         <dependency>
             <groupId>com.sun.mail</groupId>
             <artifactId>jakarta.mail</artifactId>
-            <version>2.0.1</version>
-            <!-- corrigé depuis 2.0.3 (inexistant) -->
+            <version>2.1.2</version>
+        </dependency>
+
+        <!-- Google OAuth / Gmail -->
+        <dependency>
+            <groupId>com.google.oauth-client</groupId>
+            <artifactId>google-oauth-client-jetty</artifactId>
+            <version>1.34.1</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.apis</groupId>
+            <artifactId>google-api-services-gmail</artifactId>
+            <version>v1-rev20240205-2.0.0</version>
         </dependency>
     </dependencies>
 

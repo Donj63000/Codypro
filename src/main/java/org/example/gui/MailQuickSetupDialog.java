@@ -9,7 +9,7 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import org.example.dao.MailPrefsDAO;
-import org.example.mail.GoogleAuthService;
+import org.example.mail.GmailOAuth2Service;
 import org.example.mail.MailPrefs;
 import org.example.mail.Mailer;
 import org.example.mail.SmtpPreset;
@@ -17,6 +17,9 @@ import org.example.mail.autodetect.AutoConfigProvider;
 import org.example.mail.autodetect.AutoConfigResult;
 import org.example.mail.autodetect.DefaultAutoConfigProvider;
 import javafx.concurrent.Task;
+import jakarta.mail.*;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
 
 /** Dialog providing simplified e‑mail configuration using provider presets. */
 public class MailQuickSetupDialog extends Dialog<MailPrefs> {
@@ -57,6 +60,15 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
 
         final MailPrefs[] prefsBox = { current };
+        final GmailOAuth2Service[] gmailSvc = { null };
+
+        // choose between classical SMTP and Gmail OAuth2
+        ToggleGroup tgMode = new ToggleGroup();
+        RadioButton rbClassic = new RadioButton("SMTP classique");
+        RadioButton rbOauth2 = new RadioButton("Gmail OAuth2");
+        rbClassic.setToggleGroup(tgMode);
+        rbOauth2.setToggleGroup(tgMode);
+        rbClassic.setSelected(true);
 
         ComboBox<SmtpPreset> cbProv = new ComboBox<>(FXCollections.observableArrayList(SmtpPreset.PRESETS));
         SmtpPreset sel = SmtpPreset.byProvider(current.provider());
@@ -72,6 +84,9 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         cbSSL.setTooltip(new Tooltip("Connexion sécurisée"));
         TextField tfUser = new TextField(current.user());
         tfUser.setTooltip(new Tooltip("Utilisateur SMTP"));
+        TextField tfGmail = new TextField(current.user());
+        tfGmail.setEditable(false);
+        tfGmail.setVisible(false);
         PasswordField tfPwd = new PasswordField();
         tfPwd.setText(current.pwd());
         tfPwd.setTooltip(new Tooltip("Mot de passe SMTP"));
@@ -85,13 +100,16 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         cbAuto = new CheckBox("Auto-découverte serveur");
         cbAuto.setSelected(true);
 
-        Button bOAuth = new Button("Connexion Gmail...");
+        Button bOAuth = new Button("Se connecter à Google");
         bOAuth.getStyleClass().add("accent");
-        bOAuth.setVisible(sel.oauth());
+        bOAuth.setVisible(false);
         bOAuth.setOnAction(ev -> {
             try {
-                new GoogleAuthService(dao).interactiveAuth();
-                prefsBox[0] = dao.load();
+                GmailOAuth2Service svc = new GmailOAuth2Service();
+                svc.authorizeInteractive();
+                gmailSvc[0] = svc;
+                tfGmail.setText(tfUser.getText());
+                tfGmail.setVisible(true);
                 Alert a = new Alert(Alert.AlertType.INFORMATION, "Authentification réussie", ButtonType.OK);
                 ThemeManager.apply(a);
                 a.showAndWait();
@@ -104,6 +122,19 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
 
         Button bTest = new Button("Tester l'envoi");
         bTest.getStyleClass().add("accent");
+
+        // toggle between classic SMTP and Gmail OAuth2
+        rbClassic.selectedProperty().addListener((o, p, n) -> {
+            boolean classic = n;
+            tfHost.setDisable(!classic);
+            tfPort.setDisable(!classic);
+            cbSSL.setDisable(!classic);
+            tfUser.setDisable(!classic);
+            tfPwd.setDisable(!classic);
+            cbAuto.setDisable(!classic);
+            bOAuth.setVisible(!classic);
+            tfGmail.setVisible(!classic);
+        });
 
         // auto discovery when sender address changes
         final String[] lastDomain = {""};
@@ -145,7 +176,9 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         GridPane gp = new GridPane();
         gp.setHgap(8); gp.setVgap(6); gp.setPadding(new Insets(12));
         int r = 0;
+        gp.addRow(r++, new Label("Mode d'envoi :"), rbClassic, rbOauth2);
         gp.addRow(r++, new Label("Fournisseur :"), cbProv);
+        gp.addRow(r++, new Label("Adresse Gmail :"), tfGmail);
         gp.addRow(r++, new Label("Style :"), cbStyle);
         gp.addRow(r++, new Label("SMTP :"), tfHost, new Label("Port"), tfPort, cbSSL);
         gp.addRow(r++, new Label("Utilisateur :"), tfUser);
@@ -195,10 +228,11 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         BooleanBinding portInvalid = Bindings.createBooleanBinding(() -> {
             try { Integer.parseInt(tfPort.getText()); return false; } catch(Exception e) { return true; }
         }, tfPort.textProperty());
-        BooleanBinding invalid = tfHost.textProperty().isEmpty()
+        BooleanBinding classicInvalid = tfHost.textProperty().isEmpty()
                 .or(tfUser.textProperty().isEmpty())
-                .or(tfFrom.textProperty().isEmpty())
                 .or(portInvalid);
+        BooleanBinding invalid = rbClassic.selectedProperty().and(classicInvalid)
+                .or(tfFrom.textProperty().isEmpty());
         Button ok = (Button) getDialogPane().lookupButton(ButtonType.OK);
         ok.disableProperty().bind(invalid);
 
@@ -229,7 +263,17 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
             ThemeManager.apply(td);
             td.showAndWait().ifPresent(addr -> {
                 try {
-                    Mailer.send(tmp, addr, "Test", "Ceci est un message de test.");
+                    if (rbOauth2.isSelected() && gmailSvc[0] != null) {
+                        Session s = gmailSvc[0].createSession(tfGmail.getText());
+                        Message m = new MimeMessage(s);
+                        m.setFrom(new InternetAddress(tfFrom.getText()));
+                        m.setRecipients(Message.RecipientType.TO, InternetAddress.parse(addr, false));
+                        m.setSubject("Test");
+                        m.setText("Ceci est un message de test.");
+                        Transport.send(m);
+                    } else {
+                        Mailer.send(tmp, addr, "Test", "Ceci est un message de test.");
+                    }
                     Alert a = new Alert(Alert.AlertType.INFORMATION, "E-mail envoyé", ButtonType.OK);
                     ThemeManager.apply(a);
                     a.showAndWait();
