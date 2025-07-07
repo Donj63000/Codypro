@@ -43,6 +43,7 @@ public class MailQuickSetupDialogTest {
                     from_addr TEXT NOT NULL,
                     copy_to_self TEXT,
                     delay_hours INTEGER NOT NULL DEFAULT 48,
+                    style TEXT,
                     subj_tpl_presta TEXT NOT NULL,
                     body_tpl_presta TEXT NOT NULL,
                     subj_tpl_self TEXT NOT NULL,
@@ -74,5 +75,24 @@ public class MailQuickSetupDialogTest {
 
         MailPrefs stored = dao.load();
         assertEquals(initial.host(), stored.host());
+    }
+
+    @Test
+    void testTemplatesSwitchWithStyle() throws Exception {
+        MailPrefs initial = MailPrefs.defaultValues();
+        dao.save(initial);
+
+        CountDownLatch latch = new CountDownLatch(1);
+        final MailPrefs[] result = new MailPrefs[1];
+        Platform.runLater(() -> {
+            MailQuickSetupDialog d = new MailQuickSetupDialog(initial, dao);
+            d.styleCombo().getSelectionModel().select("en");
+            result[0] = d.getResultConverter().call(ButtonType.OK);
+            latch.countDown();
+        });
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+
+        assertEquals("en", result[0].style());
+        assertEquals(MailPrefs.TEMPLATE_SETS.get("en")[0], result[0].subjPresta());
     }
 }

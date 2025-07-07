@@ -31,6 +31,7 @@ public class MailPrefsDAOTest {
                     from_addr TEXT NOT NULL,
                     copy_to_self TEXT,
                     delay_hours INTEGER NOT NULL DEFAULT 48,
+                    style TEXT,
                     subj_tpl_presta TEXT NOT NULL,
                     body_tpl_presta TEXT NOT NULL,
                     subj_tpl_self TEXT NOT NULL,
@@ -64,6 +65,7 @@ public class MailPrefsDAOTest {
                 "user", "pwd",
                 "gmail", "client:secret", "refresh", 123L,
                 "from@test.com", "copy@test.com", 12,
+                "fr",
                 "s1", "b1", "s2", "b2");
         dao.save(prefs);
         MailPrefs loaded = dao.load();
@@ -77,6 +79,7 @@ public class MailPrefsDAOTest {
                 "user", "pwd",
                 "gmail", "client:secret", "tok1", 100L,
                 "from@test.com", null, 12,
+                "fr",
                 "s1", "b1", "s2", "b2");
         dao.save(prefs);
 
@@ -86,6 +89,7 @@ public class MailPrefsDAOTest {
                 prefs.provider(), prefs.oauthClient(), prefs.oauthRefresh(),
                 200L,
                 prefs.from(), prefs.copyToSelf(), prefs.delayHours(),
+                prefs.style(),
                 prefs.subjPresta(), prefs.bodyPresta(),
                 prefs.subjSelf(), prefs.bodySelf());
         dao.save(updated);
@@ -93,5 +97,22 @@ public class MailPrefsDAOTest {
         MailPrefs loaded = dao.load();
         assertEquals("tok1", loaded.oauthRefresh());
         assertEquals(200L, loaded.oauthExpiry());
+    }
+
+    @Test
+    void testStylePersists() {
+        String[] en = MailPrefs.TEMPLATE_SETS.get("en");
+        MailPrefs prefs = new MailPrefs(
+                "smtp.test.com", 25, false,
+                "u", "p",
+                "custom", "", "", 0L,
+                "from@test.com", null, 12,
+                "en",
+                en[0], en[1], en[2], en[3]);
+        dao.save(prefs);
+
+        MailPrefs loaded = dao.load();
+        assertEquals("en", loaded.style());
+        assertEquals(en[0], loaded.subjPresta());
     }
 }

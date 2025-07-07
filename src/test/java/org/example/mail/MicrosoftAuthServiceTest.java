@@ -40,6 +40,7 @@ public class MicrosoftAuthServiceTest {
                     from_addr TEXT NOT NULL,
                     copy_to_self TEXT,
                     delay_hours INTEGER NOT NULL DEFAULT 48,
+                    style TEXT,
                     subj_tpl_presta TEXT NOT NULL,
                     body_tpl_presta TEXT NOT NULL,
                     subj_tpl_self TEXT NOT NULL,
@@ -53,6 +54,7 @@ public class MicrosoftAuthServiceTest {
                 "user", "pwd",
                 "outlook", "id:secret", "refresh", 0L,
                 "from@test.com", null, 48,
+                "fr",
                 "s1", "b1", "s2", "b2");
         dao.save(prefs);
     }

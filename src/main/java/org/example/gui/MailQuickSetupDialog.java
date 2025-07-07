@@ -16,6 +16,15 @@ import org.example.mail.SmtpPreset;
 
 /** Dialog providing simplified e‑mail configuration using provider presets. */
 public class MailQuickSetupDialog extends Dialog<MailPrefs> {
+    private final ComboBox<String> cbStyle;
+    private final TextArea taSubjP;
+    private final TextArea taBodyP;
+    private final TextArea taSubjS;
+    private final TextArea taBodyS;
+
+    /** Accessor used in tests. */
+    ComboBox<String> styleCombo() { return cbStyle; }
+
     public MailQuickSetupDialog(MailPrefs current, MailPrefsDAO dao) {
         setTitle("Paramètres e-mail");
         setResizable(true);
@@ -78,10 +87,14 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
             }
         });
 
+        cbStyle = new ComboBox<>(FXCollections.observableArrayList(MailPrefs.TEMPLATE_SETS.keySet()));
+        cbStyle.getSelectionModel().select(current.style());
+
         GridPane gp = new GridPane();
         gp.setHgap(8); gp.setVgap(6); gp.setPadding(new Insets(12));
         int r = 0;
         gp.addRow(r++, new Label("Fournisseur :"), cbProv);
+        gp.addRow(r++, new Label("Style :"), cbStyle);
         gp.addRow(r++, new Label("SMTP :"), tfHost, new Label("Port"), tfPort, cbSSL);
         gp.addRow(r++, new Label("Utilisateur :"), tfUser);
         gp.addRow(r++, new Label("Mot de passe :"), tfPwd);
@@ -91,14 +104,23 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         gp.add(bOAuth, 0, r++, 5, 1);
         gp.add(bTest, 0, r++, 5, 1);
 
-        TextArea taSubjP = new TextArea(current.subjPresta());
+        taSubjP = new TextArea(current.subjPresta());
         taSubjP.setPrefRowCount(2);
-        TextArea taBodyP = new TextArea(current.bodyPresta());
+        taBodyP = new TextArea(current.bodyPresta());
         taBodyP.setPrefRowCount(3);
-        TextArea taSubjS = new TextArea(current.subjSelf());
+        taSubjS = new TextArea(current.subjSelf());
         taSubjS.setPrefRowCount(2);
-        TextArea taBodyS = new TextArea(current.bodySelf());
+        taBodyS = new TextArea(current.bodySelf());
         taBodyS.setPrefRowCount(3);
+        cbStyle.valueProperty().addListener((o, p, n) -> {
+            String[] tpl = MailPrefs.TEMPLATE_SETS.get(n);
+            if (tpl != null) {
+                taSubjP.setText(tpl[0]);
+                taBodyP.setText(tpl[1]);
+                taSubjS.setText(tpl[2]);
+                taBodyS.setText(tpl[3]);
+            }
+        });
         Label vars = new Label("Variables : %NOM%, %EMAIL%, %MONTANT%, %ECHEANCE%, %ID%");
         vars.getStyleClass().add("caption");
 
@@ -142,6 +164,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
                     tfFrom.getText(),
                     tfCopy.getText(),
                     spDelay.getValue(),
+                    cbStyle.getValue(),
                     taSubjP.getText(),
                     taBodyP.getText(),
                     taSubjS.getText(),
@@ -181,6 +204,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
                         tfFrom.getText(),
                         tfCopy.getText(),
                         spDelay.getValue(),
+                        cbStyle.getValue(),
                         taSubjP.getText(),
                         taBodyP.getText(),
                         taSubjS.getText(),
