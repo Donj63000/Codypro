@@ -6,6 +6,10 @@ import jakarta.mail.internet.*;
 import org.example.model.Facture;
 import org.example.model.Prestataire;
 
+import org.example.mail.OAuthService;
+import org.example.mail.OAuthServiceFactory;
+import org.example.mail.SmtpPreset;
+
 import java.util.*;
 
 /**
@@ -32,13 +36,17 @@ public final class Mailer {
         });
     }
 
-    /** Create a Gmail {@link Session} using OAuth2. */
-    private static Session makeSessionGmail(String user, String token) {
+    /** Create an OAuth {@link Session} using XOAUTH2. */
+    private static Session makeSessionOAuth(MailPrefs cfg, String token) {
         Properties p = new Properties();
         p.put("mail.smtp.auth", "true");
-        p.put("mail.smtp.starttls.enable", "true");
-        p.put("mail.smtp.host", "smtp.gmail.com");
-        p.put("mail.smtp.port", "587");
+        if (cfg.ssl()) {
+            p.put("mail.smtp.ssl.enable", "true");
+        } else {
+            p.put("mail.smtp.starttls.enable", "true");
+        }
+        p.put("mail.smtp.host", cfg.host());
+        p.put("mail.smtp.port", String.valueOf(cfg.port()));
         p.put("mail.smtp.sasl.enable", "true");
         p.put("mail.smtp.sasl.mechanisms", "XOAUTH2");
         p.put("mail.smtp.auth.login.disable", "true");
@@ -46,7 +54,7 @@ public final class Mailer {
         return Session.getInstance(p, new Authenticator() {
             @Override
             protected PasswordAuthentication getPasswordAuthentication() {
-                return new PasswordAuthentication(user, token);
+                return new PasswordAuthentication(cfg.user(), token);
             }
         });
     }
@@ -62,10 +70,12 @@ public final class Mailer {
     public static void send(MailPrefs cfg, String to, String subject, String body)
             throws MessagingException {
         Session s;
-        if ("gmail".equalsIgnoreCase(cfg.provider())) {
-            GoogleAuthService gs = new GoogleAuthService(cfg);
-            String token = gs.getAccessToken();
-            s = makeSessionGmail(cfg.user(), token);
+        SmtpPreset preset = SmtpPreset.byProvider(cfg.provider());
+        if (preset != null && preset.oauth()) {
+            OAuthService svc = OAuthServiceFactory.create(cfg);
+            if (svc == null) throw new MessagingException("Unsupported OAuth provider: " + cfg.provider());
+            String token = svc.getAccessToken();
+            s = makeSessionOAuth(cfg, token);
         } else {
             s = makeSession(cfg);
         }
