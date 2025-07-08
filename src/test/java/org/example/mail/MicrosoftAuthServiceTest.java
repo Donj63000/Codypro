@@ -1,6 +1,7 @@
 package org.example.mail;
 
 import org.example.dao.MailPrefsDAO;
+import org.example.dao.DB;
 import org.junit.jupiter.api.*;
 
 import java.lang.reflect.Field;
@@ -10,7 +11,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpClient.Version;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.Statement;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -18,13 +18,13 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class MicrosoftAuthServiceTest {
-    private Connection conn;
+    private String url;
     private MailPrefsDAO dao;
 
     @BeforeEach
     void setUp() throws Exception {
-        conn = DriverManager.getConnection("jdbc:sqlite::memory:");
-        try (Statement st = conn.createStatement()) {
+        url = "file:microsoft?mode=memory&cache=shared";
+        try (Connection conn = DB.newConnection(url); Statement st = conn.createStatement()) {
             st.executeUpdate("""
                 CREATE TABLE mail_prefs (
                     id INTEGER PRIMARY KEY CHECK(id=1),
@@ -48,7 +48,7 @@ public class MicrosoftAuthServiceTest {
                 )
             """);
         }
-        dao = new MailPrefsDAO(conn);
+        dao = new MailPrefsDAO(() -> DB.newConnection(url));
         MailPrefs prefs = new MailPrefs(
                 "smtp.office365.com", 587, false,
                 "user", "pwd",
@@ -59,10 +59,7 @@ public class MicrosoftAuthServiceTest {
         dao.save(prefs);
     }
 
-    @AfterEach
-    void tearDown() throws Exception {
-        conn.close();
-    }
+
 
     @Test
     void testTokenRefresh() throws Exception {

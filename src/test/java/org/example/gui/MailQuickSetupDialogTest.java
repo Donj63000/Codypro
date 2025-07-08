@@ -4,11 +4,11 @@ import javafx.application.Platform;
 import javafx.embed.swing.JFXPanel;
 import javafx.scene.control.ButtonType;
 import org.example.dao.MailPrefsDAO;
+import org.example.dao.DB;
 import org.example.mail.MailPrefs;
 import org.junit.jupiter.api.*;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.Statement;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class MailQuickSetupDialogTest {
-    private Connection conn;
+    private String url;
     private MailPrefsDAO dao;
 
     @BeforeAll
@@ -26,8 +26,8 @@ public class MailQuickSetupDialogTest {
 
     @BeforeEach
     void setup() throws Exception {
-        conn = DriverManager.getConnection("jdbc:sqlite::memory:");
-        try (Statement st = conn.createStatement()) {
+        url = "file:prefsdlg?mode=memory&cache=shared";
+        try (Connection conn = DB.newConnection(url); Statement st = conn.createStatement()) {
             st.executeUpdate("""
                 CREATE TABLE mail_prefs (
                     id INTEGER PRIMARY KEY CHECK(id=1),
@@ -51,12 +51,7 @@ public class MailQuickSetupDialogTest {
                 )
             """);
         }
-        dao = new MailPrefsDAO(conn);
-    }
-
-    @AfterEach
-    void tearDown() throws Exception {
-        conn.close();
+        dao = new MailPrefsDAO(() -> DB.newConnection(url));
     }
 
     @Test

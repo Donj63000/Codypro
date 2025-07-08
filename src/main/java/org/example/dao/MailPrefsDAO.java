@@ -6,11 +6,11 @@ import org.example.mail.SmtpPreset;
 import java.sql.*;
 
 public class MailPrefsDAO {
-    private final Connection c;
-    public MailPrefsDAO(Connection c){ this.c = c; }
+    private final ConnectionProvider ds;
+    public MailPrefsDAO(ConnectionProvider ds){ this.ds = ds; }
 
     public MailPrefs load(){
-        try (Statement st = c.createStatement()){
+        try (Connection c = ds.getConnection(); Statement st = c.createStatement()){
             ResultSet rs = st.executeQuery("SELECT * FROM mail_prefs WHERE id=1");
             if(!rs.next()) return MailPrefs.fromPreset(SmtpPreset.PRESETS[0]);
             return MailPrefs.fromRS(rs);
@@ -31,7 +31,7 @@ public class MailPrefsDAO {
               subj_tpl_presta=excluded.subj_tpl_presta,body_tpl_presta=excluded.body_tpl_presta,
               subj_tpl_self=excluded.subj_tpl_self,body_tpl_self=excluded.body_tpl_self
         """;
-        try (PreparedStatement ps = c.prepareStatement(sql)){
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)){
             p.bind(ps);
             ps.executeUpdate();
         }catch(SQLException e){ throw new RuntimeException(e);}    }

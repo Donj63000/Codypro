@@ -19,7 +19,7 @@ public class DBTest {
 
     @BeforeEach
     void setUp() {
-        db = new DB(":memory:");
+        db = new DB("file:memdb1?mode=memory&cache=shared");
     }
 
     @AfterEach

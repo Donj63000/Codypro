@@ -30,7 +30,7 @@ public class MainApp extends Application {
     @Override
     public void start(Stage primaryStage) {
         dao = new DB(DB_FILE);
-        mailPrefsDao = new MailPrefsDAO(dao.getConnection());
+        mailPrefsDao = new MailPrefsDAO(dao);
         view = new MainView(primaryStage, dao, mailPrefsDao);
         primaryStage.setTitle("Gestion des Prestataires");
         Scene sc = new Scene(view.getRoot(), 920, 600);
