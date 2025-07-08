@@ -113,11 +113,22 @@
             <plugin>
                 <groupId>org.openjfx</groupId>
                 <artifactId>javafx-maven-plugin</artifactId>
-                <version>${javafx.maven.plugin.version}</version>
+                <version>${javafx.maven.plugin.version}</version><!-- 0.0.8 ou + -->
                 <configuration>
                     <mainClass>org.example.MainApp</mainClass>
-                    <jlinkZip>false</jlinkZip>
+                    <launcher>MonApp</launcher>
+                    <jlinkZip>true</jlinkZip>        <!-- option reconnue à partir de 0.0.6 -->
                 </configuration>
+
+                <!-- si vous voulez que jlink s’exécute à chaque build -->
+                <executions>
+                    <execution>
+                        <id>create-runtime-image</id>
+                        <goals>
+                            <goal>jlink</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
