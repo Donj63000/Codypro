@@ -24,7 +24,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
         SQLiteConfig cfg = new SQLiteConfig();
         cfg.setBusyTimeout(5000);
         cfg.setSharedCache(true);
-        cfg.setFullSync(true);
+        cfg.setSynchronous(SQLiteConfig.SynchronousMode.FULL);
         cfg.setJournalMode(SQLiteConfig.JournalMode.WAL);
         cfg.enforceForeignKeys(true);
         cfg.setOpenMode(SQLiteOpenMode.FULLMUTEX);
