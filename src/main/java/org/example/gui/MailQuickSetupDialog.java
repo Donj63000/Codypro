@@ -60,6 +60,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
 
         final MailPrefs[] prefsBox = { current };
+        final String[] oauthBox = { current.oauthClient() };
         final GmailOAuth2Service[] gmailSvc = { null };
 
         // choose between classical SMTP and Gmail OAuth2
@@ -87,6 +88,9 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         TextField tfGmail = new TextField(current.user());
         tfGmail.setEditable(false);
         tfGmail.setVisible(false);
+        TextField tfClient = new TextField(oauthBox[0]);
+        tfClient.setVisible(false);
+        tfClient.textProperty().addListener((o,p,n) -> oauthBox[0] = n);
         PasswordField tfPwd = new PasswordField();
         tfPwd.setText(current.pwd());
         tfPwd.setTooltip(new Tooltip("Mot de passe SMTP"));
@@ -105,7 +109,18 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         bOAuth.setVisible(false);
         bOAuth.setOnAction(ev -> {
             try {
-                GmailOAuth2Service svc = new GmailOAuth2Service();
+                MailPrefs base = prefsBox[0];
+                MailPrefs tmp = new MailPrefs(
+                        base.host(), base.port(), base.ssl(),
+                        base.user(), base.pwd(),
+                        base.provider(), oauthBox[0],
+                        base.oauthRefresh(), base.oauthExpiry(),
+                        base.from(), base.copyToSelf(), base.delayHours(),
+                        base.style(),
+                        base.subjPresta(), base.bodyPresta(),
+                        base.subjSelf(), base.bodySelf()
+                );
+                GmailOAuth2Service svc = new GmailOAuth2Service(tmp);
                 svc.authorizeInteractive();
                 gmailSvc[0] = svc;
                 tfGmail.setText(tfUser.getText());
@@ -134,6 +149,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
             cbAuto.setDisable(!classic);
             bOAuth.setVisible(!classic);
             tfGmail.setVisible(!classic);
+            tfClient.setVisible(!classic);
         });
 
         // auto discovery when sender address changes
@@ -167,6 +183,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
                 tfPort.setText(String.valueOf(n.port()));
                 cbSSL.setSelected(n.ssl());
                 bOAuth.setVisible(n.oauth());
+                tfClient.setVisible(n.oauth());
             }
         });
 
@@ -178,6 +195,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         int r = 0;
         gp.addRow(r++, new Label("Mode d'envoi :"), rbClassic, rbOauth2);
         gp.addRow(r++, new Label("Fournisseur :"), cbProv);
+        gp.addRow(r++, new Label("Client OAuth :"), tfClient);
         gp.addRow(r++, new Label("Adresse Gmail :"), tfGmail);
         gp.addRow(r++, new Label("Style :"), cbStyle);
         gp.addRow(r++, new Label("SMTP :"), tfHost, new Label("Port"), tfPort, cbSSL);
@@ -231,8 +249,11 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         BooleanBinding classicInvalid = tfHost.textProperty().isEmpty()
                 .or(tfUser.textProperty().isEmpty())
                 .or(portInvalid);
+        BooleanBinding oauthInvalid = Bindings.createBooleanBinding(
+                () -> !tfClient.getText().contains(":"), tfClient.textProperty());
         BooleanBinding invalid = rbClassic.selectedProperty().and(classicInvalid)
-                .or(tfFrom.textProperty().isEmpty());
+                .or(tfFrom.textProperty().isEmpty())
+                .or(rbOauth2.selectedProperty().and(oauthInvalid));
         Button ok = (Button) getDialogPane().lookupButton(ButtonType.OK);
         ok.disableProperty().bind(invalid);
 
@@ -245,7 +266,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
                     tfUser.getText(),
                     tfPwd.getText(),
                     base.provider(),
-                    prefsBox[0].oauthClient(),
+                    oauthBox[0],
                     prefsBox[0].oauthRefresh(),
                     prefsBox[0].oauthExpiry(),
                     tfFrom.getText(),
@@ -295,7 +316,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
                         tfUser.getText(),
                         tfPwd.getText(),
                         base.provider(),
-                        prefsBox[0].oauthClient(),
+                        oauthBox[0],
                         prefsBox[0].oauthRefresh(),
                         prefsBox[0].oauthExpiry(),
                         tfFrom.getText(),
