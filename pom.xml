@@ -16,22 +16,31 @@
     <packaging>jar</packaging>
 
     <properties>
-        <!-- Java 17 = LTS, compatible avec JavaFX 21 -->
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <!-- compilation -->
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- JavaFX -->
         <javafx.version>21.0.2</javafx.version>
+        <javafx.maven.plugin.version>0.0.8</javafx.maven.plugin.version>
+
+        <!-- Google / OAuth -->
+        <google.oauth.version>1.43.3</google.oauth.version>
+        <google.api.client.version>2.5.0</google.api.client.version>
+        <!-- choisissez la révision Gmail réellement publiée, voir §2 -->
+        <gmail.service.version>v1-rev20240509-2.0.0</gmail.service.version>
+
+        <!-- autres plugins -->
         <junit.jupiter.version>5.10.1</junit.jupiter.version>
         <surefire.plugin.version>3.2.2</surefire.plugin.version>
-        <javafx.maven.plugin.version>0.0.15</javafx.maven.plugin.version>
-
     </properties>
 
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>com.google.cloud</groupId>
-                <artifactId>libraries-bom</artifactId>
-                <version>26.40.0</version>
+                <groupId>com.google.api-client</groupId>
+                <artifactId>google-api-client-bom</artifactId>
+                <version>${google.api.client.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -81,28 +90,26 @@
         <dependency>
             <groupId>com.google.oauth-client</groupId>
             <artifactId>google-oauth-client-jetty</artifactId>
-            <version>1.35.0</version>
+            <version>${google.oauth.version}</version>
         </dependency>
 
         <!-- API Client de Google (flux OAuth, etc.) -->
         <dependency>
             <groupId>com.google.api-client</groupId>
             <artifactId>google-api-client</artifactId>
-            <version>2.5.0</version>
         </dependency>
 
         <!-- Implémentation Jackson 2 utilisée par Google HTTP Client -->
         <dependency>
             <groupId>com.google.http-client</groupId>
             <artifactId>google-http-client-jackson2</artifactId>
-            <version>1.43.3</version>
         </dependency>
 
         <!-- Google Gmail API client -->
         <dependency>
             <groupId>com.google.apis</groupId>
             <artifactId>google-api-services-gmail</artifactId>
-            <version>v1-rev20231115-2.0.0</version>
+            <version>${gmail.service.version}</version>
         </dependency>
         <!-- JUnit 5 for tests -->
         <dependency>
@@ -124,6 +131,11 @@
                     <mainClass>org.example.MainApp</mainClass>
                     <jlinkZip>false</jlinkZip>
                 </configuration>
+                <executions>
+                    <execution>
+                        <goals><goal>run</goal></goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
