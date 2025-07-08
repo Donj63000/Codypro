@@ -24,6 +24,9 @@ public class MailQuickSetupDialogTest {
         new JFXPanel();
     }
 
+    @AfterAll
+    static void shutdown() { Platform.exit(); }
+
     @BeforeEach
     void setup() throws Exception {
         url = "file:prefsdlg?mode=memory&cache=shared";

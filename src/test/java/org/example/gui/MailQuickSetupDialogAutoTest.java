@@ -23,6 +23,9 @@ public class MailQuickSetupDialogAutoTest {
     @BeforeAll
     static void initJfx() { new JFXPanel(); }
 
+    @AfterAll
+    static void shutdown() { Platform.exit(); }
+
     @BeforeEach
     void setup() throws Exception {
         url = "file:prefsauto?mode=memory&cache=shared";
