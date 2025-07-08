@@ -25,7 +25,11 @@ public final class Mailer {
     private static Session makeSession(MailPrefs cfg) {
         Properties p = new Properties();
         p.put("mail.smtp.auth", "true");
-        p.put("mail.smtp.ssl.enable", cfg.ssl() ? "true" : "false");
+        if (cfg.ssl()) {
+            p.put("mail.smtp.ssl.enable", "true");   // SMTPS port 465
+        } else {
+            p.put("mail.smtp.starttls.enable", "true"); // ← AJOUT
+        }
         p.put("mail.smtp.host", cfg.host());
         p.put("mail.smtp.port", String.valueOf(cfg.port()));
         return Session.getInstance(p, new Authenticator() {
