@@ -98,12 +98,6 @@
             <version>1.43.3</version>
         </dependency>
 
-        <!-- Google Gmail API client -->
-        <dependency>
-            <groupId>com.google.apis</groupId>
-            <artifactId>google-api-services-gmail</artifactId>
-            <version>v1-rev20231115-2.0.0</version>
-        </dependency>
         <!-- JUnit 5 for tests -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
