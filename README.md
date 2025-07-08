@@ -15,6 +15,17 @@ Elle stocke les informations dans une base SQLite locale et propose une interfac
 - Un identifiant *client OAuth 2.0* Google (facultatif mais
   nécessaire pour l'envoi via Gmail)
 
+## Version de sqlite-jdbc requise
+
+La méthode `setFullSync(boolean)` nécessite la bibliothèque
+`sqlite-jdbc` en version **3.39.4.0** ou supérieure. Assurez-vous qu'aucun
+autre module n'impose une version plus ancienne. Pour vérifier la
+version effectivement utilisée et détecter d'éventuels conflits, lancez :
+
+```bash
+mvn -q dependency:tree -Dincludes=org.xerial:sqlite-jdbc
+```
+
 ## Exécution de l'application
 
 Le composant `Mailer` s'appuie désormais sur la configuration
