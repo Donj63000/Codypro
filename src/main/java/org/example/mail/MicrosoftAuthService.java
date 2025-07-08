@@ -35,10 +35,13 @@ public class MicrosoftAuthService implements OAuthService {
         this.prefs = prefs;
     }
 
+    private String clientId()  { return prefs.oauthClient().split(":",2)[0]; }
+    private String clientSec() { return prefs.oauthClient().split(":",2)[1]; }
+
     @Override
     public synchronized void interactiveAuth() {
-        String[] client = parseClient(prefs.oauthClient());
-        if (client[0].isEmpty()) throw new IllegalStateException("Missing client id");
+        String cid = clientId();
+        if (cid.isEmpty()) throw new IllegalStateException("Missing client id");
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
             CompletableFuture<String> codeFuture = new CompletableFuture<>();
@@ -55,7 +58,7 @@ public class MicrosoftAuthService implements OAuthService {
             String redirect = "http://localhost:" + port + "/oauth";
             String url = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize" +
                     "?response_type=code" +
-                    "&client_id=" + enc(client[0]) +
+                    "&client_id=" + enc(cid) +
                     "&redirect_uri=" + enc(redirect) +
                     "&scope=" + enc("offline_access https://outlook.office.com/SMTP.Send") +
                     "&prompt=consent";
@@ -67,8 +70,8 @@ public class MicrosoftAuthService implements OAuthService {
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(
                             "code=" + enc(code) +
-                            "&client_id=" + enc(client[0]) +
-                            "&client_secret=" + enc(client[1]) +
+                            "&client_id=" + enc(cid) +
+                            "&client_secret=" + enc(clientSec()) +
                             "&redirect_uri=" + enc(redirect) +
                             "&grant_type=authorization_code"))
                     .build();
@@ -97,13 +100,12 @@ public class MicrosoftAuthService implements OAuthService {
     public synchronized void refreshAccessToken() {
         String refresh = prefs.oauthRefresh();
         if (refresh.isBlank()) throw new IllegalStateException("No refresh token");
-        String[] client = parseClient(prefs.oauthClient());
         try {
             HttpRequest req = HttpRequest.newBuilder(URI.create("https://login.microsoftonline.com/common/oauth2/v2.0/token"))
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(
-                            "client_id=" + enc(client[0]) +
-                            "&client_secret=" + enc(client[1]) +
+                            "client_id=" + enc(clientId()) +
+                            "&client_secret=" + enc(clientSec()) +
                             "&refresh_token=" + enc(refresh) +
                             "&grant_type=refresh_token"))
                     .build();
@@ -116,17 +118,6 @@ public class MicrosoftAuthService implements OAuthService {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-    }
-
-    private static String[] parseClient(String val) {
-        String[] c = val == null ? new String[]{"", ""} : val.split(":", 2);
-        if (c.length < 2) {
-            String[] tmp = new String[2];
-            tmp[0] = c.length > 0 ? c[0] : "";
-            tmp[1] = "";
-            c = tmp;
-        }
-        return c;
     }
 
     private static String enc(String s) {

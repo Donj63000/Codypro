@@ -32,12 +32,18 @@ import java.util.Properties;
  */
 public final class GmailOAuth2Service {
 
-    /* ==============================================================
-       ==  🔧  UPDATE THESE TWO CONSTANTS WITH YOUR OWN CREDENTIALS  ==
-       ============================================================== */
-    private static final String CLIENT_ID     = "xxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com";
-    private static final String CLIENT_SECRET = "xxxxxxxxxxxxxxxxxxxxxx";
-    /* ============================================================== */
+    private final MailPrefs prefs;
+
+    public GmailOAuth2Service() {
+        this(MailPrefs.defaultValues());
+    }
+
+    public GmailOAuth2Service(MailPrefs prefs) {
+        this.prefs = prefs;
+    }
+
+    private String clientId()  { return prefs.oauthClient().split(":",2)[0]; }
+    private String clientSec() { return prefs.oauthClient().split(":",2)[1]; }
 
     private static final List<String> SCOPES = List.of("https://mail.google.com/");
 
@@ -63,8 +69,8 @@ public final class GmailOAuth2Service {
 
         GoogleClientSecrets secrets = new GoogleClientSecrets()
                 .setInstalled(new GoogleClientSecrets.Details()
-                        .setClientId(CLIENT_ID)
-                        .setClientSecret(CLIENT_SECRET));
+                        .setClientId(clientId())
+                        .setClientSecret(clientSec()));
 
         GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow.Builder(
                 HTTP_TRANSPORT, JSON_FACTORY, secrets, SCOPES)
@@ -98,7 +104,7 @@ public final class GmailOAuth2Service {
 
         GoogleRefreshTokenRequest req = new GoogleRefreshTokenRequest(
                 HTTP_TRANSPORT, JSON_FACTORY,
-                refreshToken, CLIENT_ID, CLIENT_SECRET);
+                refreshToken, clientId(), clientSec());
 
         try {
             GoogleTokenResponse resp = req.execute();
