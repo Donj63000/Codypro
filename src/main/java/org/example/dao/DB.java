@@ -71,7 +71,8 @@ public class DB implements AutoCloseable, ConnectionProvider {
                             echeance TEXT NOT NULL,
                             montant_ht REAL NOT NULL,
                             paye INTEGER NOT NULL DEFAULT 0,
-                            date_paiement TEXT
+                            date_paiement TEXT,
+                            preavis_envoye INTEGER NOT NULL DEFAULT 0
                         );
                         """);
             }
@@ -122,28 +123,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
                         );
                         """);
             }
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("""
-                    ALTER TABLE factures
-                    ADD COLUMN preavis_envoye INTEGER NOT NULL DEFAULT 0
-                """);
-            } catch (SQLException ignore) {}
-            // ajout progressif des colonnes OAuth pour mail_prefs
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("ALTER TABLE mail_prefs ADD COLUMN provider TEXT");
-            } catch (SQLException ignore) {}
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("ALTER TABLE mail_prefs ADD COLUMN oauth_client TEXT");
-            } catch (SQLException ignore) {}
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("ALTER TABLE mail_prefs ADD COLUMN oauth_refresh TEXT");
-            } catch (SQLException ignore) {}
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("ALTER TABLE mail_prefs ADD COLUMN oauth_expiry INTEGER");
-            } catch (SQLException ignore) {}
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("ALTER TABLE mail_prefs ADD COLUMN style TEXT DEFAULT 'fr'");
-            } catch (SQLException ignore) {}
+            // tables are created with all current columns; older schemas are no longer supported
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
