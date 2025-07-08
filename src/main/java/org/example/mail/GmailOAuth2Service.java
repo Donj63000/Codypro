@@ -78,8 +78,9 @@ public final class GmailOAuth2Service {
                 .build();
 
         LocalServerReceiver receiver = new LocalServerReceiver.Builder()
-                .setPort(8888)                 // ⇢ http://localhost:8888/Callback
+                .setPort(0)                    // 0 = port aléatoire
                 .build();
+        String redirect = receiver.getRedirectUri();
 
         Credential cred = new AuthorizationCodeInstalledApp(flow, receiver)
                 .authorize("user");
