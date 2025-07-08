@@ -8,19 +8,32 @@ import org.example.model.Rappel;
 import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import org.sqlite.SQLiteConfig;
+import org.sqlite.SQLiteOpenMode;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class DB implements AutoCloseable {
+public class DB implements AutoCloseable, ConnectionProvider {
     private static final DateTimeFormatter DATE_FR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final DateTimeFormatter DATE_DB = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-    private final Connection conn;
+    private final String path;
+
+    public static Connection newConnection(String path) throws SQLException {
+        SQLiteConfig cfg = new SQLiteConfig();
+        cfg.setBusyTimeout(5000);
+        cfg.setSharedCache(true);
+        cfg.setFullSync(true);
+        cfg.setJournalMode(SQLiteConfig.JournalMode.WAL);
+        cfg.enforceForeignKeys(true);
+        cfg.setOpenMode(SQLiteOpenMode.FULLMUTEX);
+        return DriverManager.getConnection("jdbc:sqlite:" + path, cfg.toProperties());
+    }
 
     public DB(String path) {
-        try {
-            conn = DriverManager.getConnection("jdbc:sqlite:" + path);
+        this.path = path;
+        try (Connection conn = newConnection(path)) {
             try (Statement st = conn.createStatement()) {
                 st.execute("PRAGMA foreign_keys = 1");
             }
@@ -138,15 +151,12 @@ public class DB implements AutoCloseable {
 
     @Override
     public void close() {
-        try {
-            conn.close();
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+        // no-op
     }
 
-    public java.sql.Connection getConnection(){
-        return conn;
+    @Override
+    public Connection getConnection() throws SQLException {
+        return newConnection(path);
     }
 
     public List<Prestataire> list(String filtre) {
@@ -158,7 +168,7 @@ public class DB implements AutoCloseable {
                 WHERE   p.nom LIKE ? OR p.societe LIKE ?
                 ORDER BY p.nom
             """;
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             String like = "%" + filtre + "%";
             ps.setString(1, like);
             ps.setString(2, like);
@@ -173,7 +183,7 @@ public class DB implements AutoCloseable {
 
     public void add(Prestataire p) {
         String sql = "INSERT INTO prestataires(nom,societe,telephone,email,note,facturation,date_contrat) VALUES(?,?,?,?,?,?,?)";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             fill(ps, p);
             ps.executeUpdate();
         } catch (SQLException e) {
@@ -186,7 +196,7 @@ public class DB implements AutoCloseable {
                 UPDATE prestataires SET
                 nom=?,societe=?,telephone=?,email=?,note=?,facturation=?,date_contrat=? WHERE id=?
             """;
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             fill(ps, p);
             ps.setInt(8, p.getId());
             ps.executeUpdate();
@@ -196,7 +206,7 @@ public class DB implements AutoCloseable {
     }
 
     public void delete(int pid) {
-        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM prestataires WHERE id=?")) {
+        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement("DELETE FROM prestataires WHERE id=?")) {
             ps.setInt(1, pid);
             ps.executeUpdate();
         } catch (SQLException e) {
@@ -206,7 +216,7 @@ public class DB implements AutoCloseable {
 
     public Prestataire findPrestataire(int pid){
         String sql = "SELECT * FROM prestataires WHERE id=?";
-        try(PreparedStatement ps = conn.prepareStatement(sql)){
+        try(Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)){
             ps.setInt(1, pid);
             ResultSet rs = ps.executeQuery();
             if(!rs.next()) return null;
@@ -215,7 +225,7 @@ public class DB implements AutoCloseable {
 
     public void addService(int pid, String desc) {
         String sql = "INSERT INTO services(prestataire_id,description,date) VALUES(?,?,?)";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, pid);
             ps.setString(2, desc);
             ps.setString(3, DATE_DB.format(LocalDate.now()));
@@ -236,7 +246,7 @@ public class DB implements AutoCloseable {
 
     public List<ServiceRow> services(int pid) {
         String sql = "SELECT description,date FROM services WHERE prestataire_id=? ORDER BY date";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, pid);
             ResultSet rs = ps.executeQuery();
             List<ServiceRow> out = new ArrayList<>();
@@ -256,7 +266,7 @@ public class DB implements AutoCloseable {
 
     public void addFacture(Facture f) {
         String sql = "INSERT INTO factures(prestataire_id,description,echeance,montant_ht,paye,date_paiement) VALUES(?,?,?,?,?,?)";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, f.getPrestataireId());
             ps.setString(2, f.getDescription());
             ps.setString(3, f.getEcheance().format(DATE_DB));
@@ -273,7 +283,7 @@ public class DB implements AutoCloseable {
 
     public void setFacturePayee(int id, boolean payee) {
         String sql = "UPDATE factures SET paye=?,date_paiement=? WHERE id=?";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, payee ? 1 : 0);
             if (payee) ps.setString(2, LocalDate.now().format(DATE_DB));
             else ps.setNull(2, Types.VARCHAR);
@@ -286,7 +296,7 @@ public class DB implements AutoCloseable {
 
     public List<Facture> factures(int pid, Boolean payee) {
         String sql = "SELECT * FROM factures WHERE prestataire_id=? " + (payee == null ? "" : "AND paye=? ") + "ORDER BY echeance";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             int idx = 1;
             ps.setInt(idx++, pid);
             if (payee != null) ps.setInt(idx++, payee ? 1 : 0);
@@ -323,7 +333,7 @@ public class DB implements AutoCloseable {
             SELECT * FROM factures
             WHERE paye=0 AND preavis_envoye=0 AND
                   echeance <= ?""";
-        try(PreparedStatement ps = conn.prepareStatement(sql)){
+        try(Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)){
             ps.setString(1, lim.toLocalDate().toString());
             ResultSet rs = ps.executeQuery();
             List<Facture> l = new ArrayList<>();
@@ -332,7 +342,7 @@ public class DB implements AutoCloseable {
         }catch(SQLException e){ throw new RuntimeException(e);}  }
 
     public void marquerPreavisEnvoye(int fid){
-        try(PreparedStatement ps = conn.prepareStatement(
+        try(Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(
             "UPDATE factures SET preavis_envoye=1 WHERE id=?")){
             ps.setInt(1,fid); ps.executeUpdate();
         }catch(SQLException e){ throw new RuntimeException(e);} }
@@ -343,7 +353,7 @@ public class DB implements AutoCloseable {
             INSERT INTO rappels(facture_id,dest,sujet,corps,date_envoi)
             VALUES(?,?,?,?,?)
         """;
-        try (PreparedStatement ps = conn.prepareStatement(sql)){
+        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)){
             ps.setInt   (1, r.factureId());
             ps.setString(2, r.dest());
             ps.setString(3, r.sujet());
@@ -355,7 +365,7 @@ public class DB implements AutoCloseable {
 
     public List<Rappel> rappelsÀEnvoyer(){
         String sql = "SELECT * FROM rappels WHERE envoye=0 AND date_envoi<=?";
-        try(PreparedStatement ps = conn.prepareStatement(sql)){
+        try(Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)){
             ps.setString(1, LocalDateTime.now().toString());
             ResultSet rs = ps.executeQuery();
             List<Rappel> l = new ArrayList<>();
@@ -374,7 +384,7 @@ public class DB implements AutoCloseable {
     }
 
     public void markRappelEnvoyé(int id){
-        try(PreparedStatement ps = conn.prepareStatement(
+        try(Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(
             "UPDATE rappels SET envoye=1 WHERE id=?")){
             ps.setInt(1,id); ps.executeUpdate();
         }catch(SQLException e){ throw new RuntimeException(e); }

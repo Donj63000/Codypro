@@ -60,7 +60,7 @@ public class MainView {
      * explicitly provide a {@link MailPrefsDAO} instance.
      */
     public MainView(Stage stage, DB dao) {
-        this(stage, dao, new MailPrefsDAO(dao.getConnection()));
+        this(stage, dao, new MailPrefsDAO(dao));
     }
 
     public Parent getRoot() {

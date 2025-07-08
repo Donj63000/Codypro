@@ -3,13 +3,13 @@ package org.example.gui;
 import javafx.application.Platform;
 import javafx.embed.swing.JFXPanel;
 import org.example.dao.MailPrefsDAO;
+import org.example.dao.DB;
 import org.example.mail.MailPrefs;
 import org.example.mail.autodetect.AutoConfigProvider;
 import org.example.mail.autodetect.AutoConfigResult;
 import org.junit.jupiter.api.*;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.Statement;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class MailQuickSetupDialogAutoTest {
-    private Connection conn;
+    private String url;
     private MailPrefsDAO dao;
 
     @BeforeAll
@@ -25,8 +25,8 @@ public class MailQuickSetupDialogAutoTest {
 
     @BeforeEach
     void setup() throws Exception {
-        conn = DriverManager.getConnection("jdbc:sqlite::memory:");
-        try (Statement st = conn.createStatement()) {
+        url = "file:prefsauto?mode=memory&cache=shared";
+        try (Connection conn = DB.newConnection(url); Statement st = conn.createStatement()) {
             st.executeUpdate("""
                 CREATE TABLE mail_prefs (
                     id INTEGER PRIMARY KEY CHECK(id=1),
@@ -50,11 +50,9 @@ public class MailQuickSetupDialogAutoTest {
                 )
             """);
         }
-        dao = new MailPrefsDAO(conn);
+        dao = new MailPrefsDAO(() -> DB.newConnection(url));
     }
 
-    @AfterEach
-    void tearDown() throws Exception { conn.close(); }
 
     @Test
     void testAutoDiscoveryPopulatesFields() throws Exception {

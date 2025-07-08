@@ -9,13 +9,13 @@ import java.sql.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class MailPrefsDAOTest {
-    private Connection conn;
+    private String url;
     private MailPrefsDAO dao;
 
     @BeforeEach
     void setUp() throws Exception {
-        conn = DriverManager.getConnection("jdbc:sqlite::memory:");
-        try (Statement st = conn.createStatement()) {
+        url = "file:prefsdb?mode=memory&cache=shared";
+        try (Connection conn = DB.newConnection(url); Statement st = conn.createStatement()) {
             st.executeUpdate("""
                 CREATE TABLE mail_prefs (
                     id INTEGER PRIMARY KEY CHECK(id=1),
@@ -39,13 +39,9 @@ public class MailPrefsDAOTest {
                 )
             """);
         }
-        dao = new MailPrefsDAO(conn);
+        dao = new MailPrefsDAO(() -> DB.newConnection(url));
     }
 
-    @AfterEach
-    void tearDown() throws Exception {
-        conn.close();
-    }
 
     @Test
     void testLoadPresetWhenEmpty() {
