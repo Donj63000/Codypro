@@ -258,7 +258,7 @@ public class MainView {
         gp.setPadding(new Insets(12));
         String[] lab = {"Nom","Société","Téléphone","Email","Note (0-100)","Facturation","Date contrat (dd/MM/yyyy)"};
         TextField[] fields = new TextField[lab.length];
-        Pattern mailRegex = Pattern.compile("[^@]+@[^@]+\\.[^@]+");
+        Pattern mailRegex = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]{2,}$");
 
         for (int i = 0; i < lab.length; i++) {
             gp.add(new Label(lab[i] + "  :"), 0, i);
