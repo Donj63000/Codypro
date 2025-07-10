@@ -7,6 +7,12 @@ import org.example.dao.DB;
 import org.example.dao.MailPrefsDAO;
 import org.example.gui.MainView;
 import org.example.gui.ThemeManager;
+import javafx.application.Platform;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
+import jakarta.mail.MessagingException;
+import jakarta.mail.AuthenticationFailedException;
+import com.google.api.client.auth.oauth2.TokenResponseException;
 import org.example.mail.Mailer;
 import org.example.mail.MailPrefs;
 import org.example.model.Prestataire;
@@ -47,10 +53,15 @@ public class MainApp extends Application {
 
         // ② rappels manuels (table rappels)
         dao.rappelsÀEnvoyer().forEach(r -> {
-            try{
+            try {
                 Mailer.send(cfg, r.dest(), r.sujet(), r.corps());
                 dao.markRappelEnvoyé(r.id());
-            }catch(Exception ex){ ex.printStackTrace(); }
+            } catch (MessagingException ex) {
+                handleAuthException(ex);
+                ex.printStackTrace();
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
         });
 
         // ③ pré‑avis internes
@@ -60,22 +71,44 @@ public class MainApp extends Application {
             Prestataire pr = dao.findPrestataire(f.getPrestataireId());
             Map<String,String> v = Mailer.vars(pr,f);
 
-            try{
+            try {
                 /* a) mail au prestataire */
                 Mailer.send(cfg, pr.getEmail(),
                         Mailer.subjToPresta(cfg,v),
                         Mailer.bodyToPresta(cfg,v));
 
                 /* b) mail à nous‑même si renseigné */
-                if(!cfg.copyToSelf().isBlank())
+                if (!cfg.copyToSelf().isBlank())
                     Mailer.send(cfg, cfg.copyToSelf(),
                         Mailer.subjToSelf(cfg,v),
                         Mailer.bodyToSelf(cfg,v));
 
                 dao.marquerPreavisEnvoye(f.getId());
                 System.out.println("Pré‑avis envoyé pour facture "+f.getId());
-            }catch(Exception ex){ ex.printStackTrace(); }
+            } catch (MessagingException ex) {
+                handleAuthException(ex);
+                ex.printStackTrace();
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
         });
+    }
+
+    private void handleAuthException(Throwable ex) {
+        while (ex != null) {
+            if (ex instanceof AuthenticationFailedException || ex instanceof TokenResponseException) {
+                mailPrefsDao.invalidateOAuth();
+                Platform.runLater(() -> {
+                    Alert a = new Alert(Alert.AlertType.ERROR,
+                            "Authentification expirée\u202f: merci de reconfigurer votre compte e-mail.",
+                            ButtonType.OK);
+                    ThemeManager.apply(a);
+                    a.showAndWait();
+                });
+                break;
+            }
+            ex = ex.getCause();
+        }
     }
 
     @Override

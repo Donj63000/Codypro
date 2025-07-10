@@ -35,4 +35,20 @@ public class MailPrefsDAO {
             p.bind(ps);
             ps.executeUpdate();
         }catch(SQLException e){ throw new RuntimeException(e);}    }
+
+    /** Clear stored OAuth tokens so that the next send triggers a new login. */
+    public void invalidateOAuth() {
+        MailPrefs p = load();
+        MailPrefs cleared = new MailPrefs(
+                p.host(), p.port(), p.ssl(),
+                p.user(), p.pwd(),
+                p.provider(), p.oauthClient(),
+                "", 0L,
+                p.from(), p.copyToSelf(), p.delayHours(),
+                p.style(),
+                p.subjPresta(), p.bodyPresta(),
+                p.subjSelf(), p.bodySelf()
+        );
+        save(cleared);
+    }
 }
