@@ -78,7 +78,12 @@ public class MainView {
         task.setOnFailed(ev -> {
             Throwable ex = task.getException();
             if (ex != null) ex.printStackTrace();
-            Platform.runLater(() -> alert(ex == null ? "Erreur" : ex.getMessage()));
+            if (isAuthException(ex)) {
+                mailPrefsDao.invalidateOAuth();
+                Platform.runLater(() -> alert("Authentification expirée\u202f: merci de reconfigurer votre compte e-mail."));
+            } else {
+                Platform.runLater(() -> alert(ex == null ? "Erreur" : ex.getMessage()));
+            }
         });
         executor.submit(task);
     }
@@ -90,6 +95,17 @@ public class MainView {
         }, v -> {
             if (ui != null) ui.run();
         });
+    }
+
+    private static boolean isAuthException(Throwable ex) {
+        while (ex != null) {
+            if (ex instanceof jakarta.mail.AuthenticationFailedException ||
+                ex instanceof com.google.api.client.auth.oauth2.TokenResponseException) {
+                return true;
+            }
+            ex = ex.getCause();
+        }
+        return false;
     }
 
     private void buildLayout(Stage stage) {
