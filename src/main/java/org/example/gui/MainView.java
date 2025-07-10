@@ -40,7 +40,9 @@ public class MainView {
     private final DB dao;
     private final MailPrefsDAO mailPrefsDao;
 
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> new Thread(r, "gui-bg"));
+    // Utilise un pool de travail pour éviter de bloquer l'interface
+    // lorsqu'une tâche prend du temps (I/O, PDF, DAO...).
+    private final ExecutorService executor = Executors.newWorkStealingPool();
 
     private final TableView<Prestataire> table = new TableView<>();
     private final TextField search = new TextField();
