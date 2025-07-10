@@ -42,8 +42,16 @@ public final class GmailOAuth2Service {
         this.prefs = prefs;
     }
 
-    private String clientId()  { return prefs.oauthClient().split(":",2)[0]; }
-    private String clientSec() { return prefs.oauthClient().split(":",2)[1]; }
+    private String[] client() {
+        String[] parts = prefs.oauthClient().split(":", 2);
+        if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
+            throw new IllegalStateException("OAuth client id/secret missing");
+        }
+        return parts;
+    }
+
+    private String clientId()  { return client()[0]; }
+    private String clientSec() { return client()[1]; }
 
     private static final List<String> SCOPES = List.of("https://mail.google.com/");
 
