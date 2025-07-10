@@ -8,6 +8,7 @@ import org.example.model.Rappel;
 import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import org.sqlite.SQLiteConfig;
 import org.sqlite.SQLiteOpenMode;
 import java.time.format.DateTimeFormatter;
@@ -48,7 +49,8 @@ public class DB implements AutoCloseable, ConnectionProvider {
                             email TEXT,
                             note INTEGER CHECK(note BETWEEN 0 AND 100),
                             facturation TEXT,
-                            date_contrat TEXT
+                            date_contrat TEXT,
+                            date_contrat_ts INTEGER
                         );
                         """);
             }
@@ -58,7 +60,8 @@ public class DB implements AutoCloseable, ConnectionProvider {
                             id INTEGER PRIMARY KEY,
                             prestataire_id INTEGER REFERENCES prestataires(id) ON DELETE CASCADE,
                             description TEXT,
-                            date TEXT
+                            date TEXT,
+                            date_ts INTEGER
                         );
                         """);
             }
@@ -70,9 +73,11 @@ public class DB implements AutoCloseable, ConnectionProvider {
                                 REFERENCES prestataires(id) ON DELETE CASCADE,
                             description TEXT,
                             echeance TEXT NOT NULL,
+                            echeance_ts INTEGER NOT NULL,
                             montant_ht REAL NOT NULL,
                             paye INTEGER NOT NULL DEFAULT 0,
                             date_paiement TEXT,
+                            date_paiement_ts INTEGER,
                             preavis_envoye INTEGER NOT NULL DEFAULT 0
                         );
                         """);
@@ -86,12 +91,13 @@ public class DB implements AutoCloseable, ConnectionProvider {
                             sujet        TEXT      NOT NULL,
                             corps        TEXT      NOT NULL,
                             date_envoi   TEXT      NOT NULL,   -- ISO yyyy-MM-dd HH:mm
+                            date_envoi_ts INTEGER NOT NULL,
                             envoye       INTEGER   NOT NULL DEFAULT 0
                         );
                         """);
                 st.executeUpdate("""
                         CREATE INDEX IF NOT EXISTS idx_rappels_date
-                        ON rappels(envoye,date_envoi);
+                        ON rappels(envoye,date_envoi_ts);
                         """);
             }
             try (Statement st = conn.createStatement()) {
@@ -124,6 +130,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
                         );
                         """);
             }
+            addMissingColumns(conn);
             // tables are created with all current columns; older schemas are no longer supported
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -163,7 +170,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
     }
 
     public void add(Prestataire p) {
-        String sql = "INSERT INTO prestataires(nom,societe,telephone,email,note,facturation,date_contrat) VALUES(?,?,?,?,?,?,?)";
+        String sql = "INSERT INTO prestataires(nom,societe,telephone,email,note,facturation,date_contrat,date_contrat_ts) VALUES(?,?,?,?,?,?,?,?)";
         try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             fill(ps, p);
             ps.executeUpdate();
@@ -175,11 +182,11 @@ public class DB implements AutoCloseable, ConnectionProvider {
     public void update(Prestataire p) {
         String sql = """
                 UPDATE prestataires SET
-                nom=?,societe=?,telephone=?,email=?,note=?,facturation=?,date_contrat=? WHERE id=?
+                nom=?,societe=?,telephone=?,email=?,note=?,facturation=?,date_contrat=?,date_contrat_ts=? WHERE id=?
             """;
         try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             fill(ps, p);
-            ps.setInt(8, p.getId());
+            ps.setInt(9, p.getId());
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -205,11 +212,13 @@ public class DB implements AutoCloseable, ConnectionProvider {
         }catch(SQLException e){ throw new RuntimeException(e);}    }
 
     public void addService(int pid, String desc) {
-        String sql = "INSERT INTO services(prestataire_id,description,date) VALUES(?,?,?)";
+        String sql = "INSERT INTO services(prestataire_id,description,date,date_ts) VALUES(?,?,?,?)";
+        LocalDate now = LocalDate.now();
         try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, pid);
             ps.setString(2, desc);
-            ps.setString(3, DATE_DB.format(LocalDate.now()));
+            ps.setString(3, DATE_DB.format(now));
+            ps.setLong(4, now.atStartOfDay().toEpochSecond(ZoneOffset.UTC));
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -225,14 +234,45 @@ public class DB implements AutoCloseable, ConnectionProvider {
         }
     }
 
+    private static void addMissingColumns(Connection conn) throws SQLException {
+        ensureTsColumn(conn, "prestataires", "date_contrat_ts", "date_contrat");
+        ensureTsColumn(conn, "services", "date_ts", "date");
+        ensureTsColumn(conn, "factures", "echeance_ts", "echeance");
+        ensureTsColumn(conn, "factures", "date_paiement_ts", "date_paiement");
+        ensureTsColumn(conn, "rappels", "date_envoi_ts", "date_envoi");
+    }
+
+    private static void ensureTsColumn(Connection conn, String table, String col,
+                                       String from) throws SQLException {
+        boolean exists = false;
+        try (PreparedStatement ps = conn.prepareStatement("PRAGMA table_info(" + table + ")");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                if (col.equalsIgnoreCase(rs.getString("name"))) {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+        if (!exists) {
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE " + table + " ADD COLUMN " + col + " INTEGER");
+                st.executeUpdate("UPDATE " + table + " SET " + col + "=strftime('%s', " + from + ") WHERE " + from + " IS NOT NULL");
+            }
+        }
+    }
+
     public List<ServiceRow> services(int pid) {
-        String sql = "SELECT description,date FROM services WHERE prestataire_id=? ORDER BY date";
+        String sql = "SELECT description,date,date_ts FROM services WHERE prestataire_id=? ORDER BY date_ts";
         try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, pid);
             ResultSet rs = ps.executeQuery();
             List<ServiceRow> out = new ArrayList<>();
             while (rs.next()) {
-                LocalDate d = parseAny(rs.getString("date"));
+                LocalDate d;
+                long ts = rs.getLong("date_ts");
+                if (rs.wasNull()) d = parseAny(rs.getString("date"));
+                else d = LocalDateTime.ofEpochSecond(ts,0,ZoneOffset.UTC).toLocalDate();
                 out.add(new ServiceRow(
                         rs.getString("description"),
                         d == null ? "" : DATE_FR.format(d)));
@@ -246,16 +286,22 @@ public class DB implements AutoCloseable, ConnectionProvider {
     /* =========================== Factures =========================== */
 
     public void addFacture(Facture f) {
-        String sql = "INSERT INTO factures(prestataire_id,description,echeance,montant_ht,paye,date_paiement) VALUES(?,?,?,?,?,?)";
+        String sql = "INSERT INTO factures(prestataire_id,description,echeance,echeance_ts,montant_ht,paye,date_paiement,date_paiement_ts) VALUES(?,?,?,?,?,?,?,?)";
         try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, f.getPrestataireId());
             ps.setString(2, f.getDescription());
             ps.setString(3, f.getEcheance().format(DATE_DB));
-            ps.setDouble(4, f.getMontant());
-            ps.setInt(5, f.isPaye() ? 1 : 0);
+            ps.setLong(4, f.getEcheance().atStartOfDay().toEpochSecond(ZoneOffset.UTC));
+            ps.setDouble(5, f.getMontant());
+            ps.setInt(6, f.isPaye() ? 1 : 0);
             LocalDate dp = f.getDatePaiement();
-            if (dp == null) ps.setNull(6, Types.VARCHAR);
-            else ps.setString(6, dp.format(DATE_DB));
+            if (dp == null) {
+                ps.setNull(7, Types.VARCHAR);
+                ps.setNull(8, Types.INTEGER);
+            } else {
+                ps.setString(7, dp.format(DATE_DB));
+                ps.setLong(8, dp.atStartOfDay().toEpochSecond(ZoneOffset.UTC));
+            }
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -263,12 +309,18 @@ public class DB implements AutoCloseable, ConnectionProvider {
     }
 
     public void setFacturePayee(int id, boolean payee) {
-        String sql = "UPDATE factures SET paye=?,date_paiement=? WHERE id=?";
+        String sql = "UPDATE factures SET paye=?,date_paiement=?,date_paiement_ts=? WHERE id=?";
         try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, payee ? 1 : 0);
-            if (payee) ps.setString(2, LocalDate.now().format(DATE_DB));
-            else ps.setNull(2, Types.VARCHAR);
-            ps.setInt(3, id);
+            if (payee) {
+                LocalDate now = LocalDate.now();
+                ps.setString(2, now.format(DATE_DB));
+                ps.setLong(3, now.atStartOfDay().toEpochSecond(ZoneOffset.UTC));
+            } else {
+                ps.setNull(2, Types.VARCHAR);
+                ps.setNull(3, Types.INTEGER);
+            }
+            ps.setInt(4, id);
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -276,7 +328,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
     }
 
     public List<Facture> factures(int pid, Boolean payee) {
-        String sql = "SELECT * FROM factures WHERE prestataire_id=? " + (payee == null ? "" : "AND paye=? ") + "ORDER BY echeance";
+        String sql = "SELECT * FROM factures WHERE prestataire_id=? " + (payee == null ? "" : "AND paye=? ") + "ORDER BY echeance_ts";
         try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
             int idx = 1;
             ps.setInt(idx++, pid);
@@ -291,8 +343,15 @@ public class DB implements AutoCloseable, ConnectionProvider {
     }
 
     private static Facture rowToFacture(ResultSet rs) throws SQLException {
-        LocalDate ech = parseAny(rs.getString("echeance"));
-        LocalDate dp = parseAny(rs.getString("date_paiement"));
+        LocalDate ech;
+        long echTs = rs.getLong("echeance_ts");
+        if (rs.wasNull()) ech = parseAny(rs.getString("echeance"));
+        else ech = LocalDateTime.ofEpochSecond(echTs,0,ZoneOffset.UTC).toLocalDate();
+
+        LocalDate dp;
+        long dpTs = rs.getLong("date_paiement_ts");
+        if (rs.wasNull()) dp = parseAny(rs.getString("date_paiement"));
+        else dp = LocalDateTime.ofEpochSecond(dpTs,0,ZoneOffset.UTC).toLocalDate();
         int preavis = 0;
         try {
             preavis = rs.getInt("preavis_envoye");
@@ -313,9 +372,9 @@ public class DB implements AutoCloseable, ConnectionProvider {
         String sql = """
             SELECT * FROM factures
             WHERE paye=0 AND preavis_envoye=0 AND
-                  echeance <= ?""";
+                  echeance_ts <= ?""";
         try(Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)){
-            ps.setString(1, lim.toLocalDate().toString());
+            ps.setLong(1, lim.toEpochSecond(ZoneOffset.UTC));
             ResultSet rs = ps.executeQuery();
             List<Facture> l = new ArrayList<>();
             while(rs.next()) l.add(rowToFacture(rs));
@@ -331,8 +390,8 @@ public class DB implements AutoCloseable, ConnectionProvider {
     /* =========================== Rappels =========================== */
     public void addRappel(Rappel r){
         String sql = """
-            INSERT INTO rappels(facture_id,dest,sujet,corps,date_envoi)
-            VALUES(?,?,?,?,?)
+            INSERT INTO rappels(facture_id,dest,sujet,corps,date_envoi,date_envoi_ts)
+            VALUES(?,?,?,?,?,?)
         """;
         try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)){
             ps.setInt   (1, r.factureId());
@@ -340,14 +399,15 @@ public class DB implements AutoCloseable, ConnectionProvider {
             ps.setString(3, r.sujet());
             ps.setString(4, r.corps());
             ps.setString(5, r.dateEnvoi().toString());
+            ps.setLong  (6, r.dateEnvoi().toEpochSecond(ZoneOffset.UTC));
             ps.executeUpdate();
         }catch(SQLException e){ throw new RuntimeException(e); }
     }
 
     public List<Rappel> rappelsÀEnvoyer(){
-        String sql = "SELECT * FROM rappels WHERE envoye=0 AND date_envoi<=?";
+        String sql = "SELECT * FROM rappels WHERE envoye=0 AND date_envoi_ts<=?";
         try(Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)){
-            ps.setString(1, LocalDateTime.now().toString());
+            ps.setLong(1, LocalDateTime.now().toEpochSecond(ZoneOffset.UTC));
             ResultSet rs = ps.executeQuery();
             List<Rappel> l = new ArrayList<>();
             while(rs.next())
@@ -357,7 +417,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
                     rs.getString("dest"),
                     rs.getString("sujet"),
                     rs.getString("corps"),
-                    LocalDateTime.parse(rs.getString("date_envoi")),
+                    LocalDateTime.ofEpochSecond(rs.getLong("date_envoi_ts"),0,ZoneOffset.UTC),
                     rs.getInt("envoye")!=0
                 ));
             return l;
@@ -372,7 +432,10 @@ public class DB implements AutoCloseable, ConnectionProvider {
     }
 
     private static Prestataire rowToPrestataire(ResultSet rs) throws SQLException {
-        LocalDate d = parseAny(rs.getString("date_contrat"));
+        LocalDate d;
+        long ts = rs.getLong("date_contrat_ts");
+        if (rs.wasNull()) d = parseAny(rs.getString("date_contrat"));
+        else d = LocalDateTime.ofEpochSecond(ts,0,ZoneOffset.UTC).toLocalDate();
         String date = d == null ? "" : DATE_FR.format(d);
         int imp = 0;
         try {
@@ -399,7 +462,13 @@ public class DB implements AutoCloseable, ConnectionProvider {
         ps.setInt(5, p.getNote());
         ps.setString(6, p.getFacturation());
         String raw = Objects.toString(p.getDateContrat(), "").trim();
-        if (raw.isEmpty()) ps.setNull(7, Types.VARCHAR);
-        else ps.setString(7, LocalDate.parse(raw, DATE_FR).format(DATE_DB));
+        if (raw.isEmpty()) {
+            ps.setNull(7, Types.VARCHAR);
+            ps.setNull(8, Types.INTEGER);
+        } else {
+            LocalDate d = LocalDate.parse(raw, DATE_FR);
+            ps.setString(7, d.format(DATE_DB));
+            ps.setLong(8, d.atStartOfDay().toEpochSecond(ZoneOffset.UTC));
+        }
     }
 }
