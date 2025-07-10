@@ -14,6 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class DB implements AutoCloseable, ConnectionProvider {
     private static final DateTimeFormatter DATE_FR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -397,7 +398,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
         ps.setString(4, p.getEmail());
         ps.setInt(5, p.getNote());
         ps.setString(6, p.getFacturation());
-        String raw = p.getDateContrat().trim();
+        String raw = Objects.toString(p.getDateContrat(), "").trim();
         if (raw.isEmpty()) ps.setNull(7, Types.VARCHAR);
         else ps.setString(7, LocalDate.parse(raw, DATE_FR).format(DATE_DB));
     }

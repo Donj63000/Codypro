@@ -86,4 +86,12 @@ public class DBTest {
         assertTrue(all.get(0).isPaye());
         assertNotNull(all.get(0).getDatePaiement());
     }
+
+    @Test
+    void testAddWithNullDateContrat() {
+        Prestataire p = new Prestataire(0, "Nom", "S", "0", "a@b.com", 50, "F", null);
+        db.add(p);
+        Prestataire stored = db.list("").get(0);
+        assertEquals("", stored.getDateContrat());
+    }
 }
