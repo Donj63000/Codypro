@@ -131,13 +131,25 @@ public class MainView {
 
     private void createTable(Stage stage) {
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        String[] cols = {"Nom","Société","Téléphone","Email","Note","Date contrat"};
-        String[] props = {"nom","societe","telephone","email","note","dateContrat"};
-        for (int i = 0; i < cols.length; i++) {
-            TableColumn<Prestataire, ?> c = new TableColumn<>(cols[i]);
-            c.setCellValueFactory(new PropertyValueFactory<>(props[i]));
-            table.getColumns().add(c);
-        }
+        TableColumn<Prestataire, String> cNom = new TableColumn<>("Nom");
+        cNom.setCellValueFactory(new PropertyValueFactory<>("nom"));
+
+        TableColumn<Prestataire, String> cSociete = new TableColumn<>("Société");
+        cSociete.setCellValueFactory(new PropertyValueFactory<>("societe"));
+
+        TableColumn<Prestataire, String> cTel = new TableColumn<>("Téléphone");
+        cTel.setCellValueFactory(new PropertyValueFactory<>("telephone"));
+
+        TableColumn<Prestataire, String> cMail = new TableColumn<>("Email");
+        cMail.setCellValueFactory(new PropertyValueFactory<>("email"));
+
+        TableColumn<Prestataire, Integer> cNote = new TableColumn<>("Note");
+        cNote.setCellValueFactory(new PropertyValueFactory<>("note"));
+
+        TableColumn<Prestataire, String> cDate = new TableColumn<>("Date contrat");
+        cDate.setCellValueFactory(new PropertyValueFactory<>("dateContrat"));
+
+        table.getColumns().addAll(cNom, cSociete, cTel, cMail, cNote, cDate);
 
         TableColumn<Prestataire, Boolean> cOk = new TableColumn<>("Toutes factures payées");
         cOk.setCellValueFactory(data ->
@@ -422,13 +434,19 @@ public class MainView {
             }
         });
 
-        tv.getColumns().addAll(
-            col("Échéance","echeanceFr"),
-            col("Description","description"),
-            col("Montant","montant"),
-            cPaye,
-            col("Date paiement","datePaiementFr")
-        );
+        TableColumn<Facture, String> cEcheance = new TableColumn<>("Échéance");
+        cEcheance.setCellValueFactory(new PropertyValueFactory<>("echeanceFr"));
+
+        TableColumn<Facture, String> cDescription = new TableColumn<>("Description");
+        cDescription.setCellValueFactory(new PropertyValueFactory<>("description"));
+
+        TableColumn<Facture, Double> cMontant = new TableColumn<>("Montant");
+        cMontant.setCellValueFactory(new PropertyValueFactory<>("montant"));
+
+        TableColumn<Facture, String> cDatePay = new TableColumn<>("Date paiement");
+        cDatePay.setCellValueFactory(new PropertyValueFactory<>("datePaiementFr"));
+
+        tv.getColumns().addAll(cEcheance, cDescription, cMontant, cPaye, cDatePay);
         tv.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
         tv.setRowFactory(tb -> {
             TableRow<Facture> row = new TableRow<>();
@@ -481,11 +499,6 @@ public class MainView {
     }
 
     /* Helpers */
-    private TableColumn<Facture,?> col(String title,String prop){
-        TableColumn<Facture,?> c = new TableColumn<>(title);
-        c.setCellValueFactory(new PropertyValueFactory<>(prop));
-        return c;
-    }
     private void refreshFactures(Prestataire p, TableView<Facture> tv){
         runAsync(() -> dao.factures(p.getId(), null),
                  list -> {
