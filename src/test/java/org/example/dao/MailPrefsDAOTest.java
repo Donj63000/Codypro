@@ -29,7 +29,7 @@ public class MailPrefsDAOTest {
                     oauth_refresh TEXT,
                     oauth_expiry INTEGER,
                     from_addr TEXT NOT NULL,
-                    copy_to_self TEXT,
+                    copy_to_self TEXT NOT NULL DEFAULT '',
                     delay_hours INTEGER NOT NULL DEFAULT 48,
                     style TEXT,
                     subj_tpl_presta TEXT NOT NULL,
@@ -74,7 +74,7 @@ public class MailPrefsDAOTest {
                 "smtp.test.com", 25, false,
                 "user", "pwd",
                 "gmail", "client:secret", "tok1", 100L,
-                "from@test.com", null, 12,
+                "from@test.com", "", 12,
                 "fr",
                 "s1", "b1", "s2", "b2");
         dao.save(prefs);
@@ -102,7 +102,7 @@ public class MailPrefsDAOTest {
                 "smtp.test.com", 25, false,
                 "u", "p",
                 "custom", "", "", 0L,
-                "from@test.com", null, 12,
+                "from@test.com", "", 12,
                 "en",
                 en[0], en[1], en[2], en[3]);
         dao.save(prefs);

@@ -38,7 +38,7 @@ public class GoogleAuthServiceTest {
                     oauth_refresh TEXT,
                     oauth_expiry INTEGER,
                     from_addr TEXT NOT NULL,
-                    copy_to_self TEXT,
+                    copy_to_self TEXT NOT NULL DEFAULT '',
                     delay_hours INTEGER NOT NULL DEFAULT 48,
                     style TEXT,
                     subj_tpl_presta TEXT NOT NULL,
@@ -53,7 +53,7 @@ public class GoogleAuthServiceTest {
                 "smtp.gmail.com", 465, true,
                 "user", "pwd",
                 "gmail", "id:secret", "refresh", 0L,
-                "from@test.com", null, 48,
+                "from@test.com", "", 48,
                 "fr",
                 "s1", "b1", "s2", "b2");
         dao.save(prefs);

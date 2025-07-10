@@ -98,6 +98,8 @@ public record MailPrefs(
         } catch(SQLException ignore) {}
         String style = rs.getString("style");
         if(style == null || style.isEmpty()) style = DEFAULT_STYLE;
+        String copy = rs.getString("copy_to_self");
+        if (copy == null) copy = "";
         return new MailPrefs(
             rs.getString("host"),
             rs.getInt("port"),
@@ -109,7 +111,7 @@ public record MailPrefs(
             oauthRefresh,
             expiry,
             rs.getString("from_addr"),
-            rs.getString("copy_to_self"),
+            copy,
             rs.getInt("delay_hours"),
             style,
             rs.getString("subj_tpl_presta"),
@@ -130,7 +132,7 @@ public record MailPrefs(
         ps.setString(8, oauthRefresh());
         ps.setLong(9, oauthExpiry());
         ps.setString(10, from());
-        ps.setString(11, copyToSelf());
+        ps.setString(11, copyToSelf() == null ? "" : copyToSelf());
         ps.setInt(12, delayHours());
         ps.setString(13, style());
         ps.setString(14, subjPresta());

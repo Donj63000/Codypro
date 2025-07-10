@@ -137,7 +137,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
                             oauth_refresh    TEXT,
                             oauth_expiry     INTEGER,
                             from_addr        TEXT  NOT NULL,
-                            copy_to_self     TEXT,
+                            copy_to_self     TEXT NOT NULL DEFAULT '',
                             delay_hours      INTEGER NOT NULL DEFAULT 48,
                             style            TEXT  NOT NULL DEFAULT 'fr',
                             subj_tpl_presta  TEXT  NOT NULL,
@@ -147,6 +147,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
                         );
                         """);
             }
+            upgradeCopyToSelf(conn);
             addMissingColumns(conn);
             // tables are created with all current columns; older schemas are no longer supported
         } catch (Exception e) {
@@ -257,6 +258,14 @@ public class DB implements AutoCloseable, ConnectionProvider {
         ensureTsColumn(conn, "factures", "echeance_ts", "echeance");
         ensureTsColumn(conn, "factures", "date_paiement_ts", "date_paiement");
         ensureTsColumn(conn, "rappels", "date_envoi_ts", "date_envoi");
+    }
+
+    private static void upgradeCopyToSelf(Connection conn) {
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("UPDATE mail_prefs SET copy_to_self = '' WHERE copy_to_self IS NULL");
+            st.executeUpdate("ALTER TABLE mail_prefs ALTER COLUMN copy_to_self SET DEFAULT ''");
+            st.executeUpdate("ALTER TABLE mail_prefs ALTER COLUMN copy_to_self SET NOT NULL");
+        } catch (SQLException ignore) { }
     }
 
     private static void ensureTsColumn(Connection conn, String table, String col,
