@@ -97,6 +97,13 @@
             <version>3.45.2.0</version>
         </dependency>
 
+        <!-- Lightweight JDBC connection pool -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>5.1.0</version>
+        </dependency>
+
         <!-- JUnit 5 for tests -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>

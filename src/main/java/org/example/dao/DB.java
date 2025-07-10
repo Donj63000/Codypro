@@ -11,6 +11,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import org.sqlite.SQLiteConfig;
 import org.sqlite.SQLiteOpenMode;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -21,6 +23,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
     private static final DateTimeFormatter DATE_FR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final DateTimeFormatter DATE_DB = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private final String path;
+    private final HikariDataSource ds;
 
     public static Connection newConnection(String path) throws SQLException {
         SQLiteConfig cfg = new SQLiteConfig();
@@ -35,7 +38,21 @@ public class DB implements AutoCloseable, ConnectionProvider {
 
     public DB(String path) {
         this.path = path;
-        try (Connection conn = newConnection(path)) {
+
+        SQLiteConfig sqCfg = new SQLiteConfig();
+        sqCfg.setBusyTimeout(5000);
+        sqCfg.setSharedCache(true);
+        sqCfg.setSynchronous(SQLiteConfig.SynchronousMode.FULL);
+        sqCfg.setJournalMode(SQLiteConfig.JournalMode.WAL);
+        sqCfg.enforceForeignKeys(true);
+        sqCfg.setOpenMode(SQLiteOpenMode.FULLMUTEX);
+
+        HikariConfig cfg = new HikariConfig();
+        cfg.setJdbcUrl("jdbc:sqlite:" + path);
+        cfg.setDataSourceProperties(sqCfg.toProperties());
+        ds = new HikariDataSource(cfg);
+
+        try (Connection conn = ds.getConnection()) {
             try (Statement st = conn.createStatement()) {
                 st.execute("PRAGMA foreign_keys = 1");
             }
@@ -139,12 +156,12 @@ public class DB implements AutoCloseable, ConnectionProvider {
 
     @Override
     public void close() {
-        // no-op
+        ds.close();
     }
 
     @Override
     public Connection getConnection() throws SQLException {
-        return newConnection(path);
+        return ds.getConnection();
     }
 
     public List<Prestataire> list(String filtre) {
@@ -156,7 +173,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
                 WHERE   p.nom LIKE ? OR p.societe LIKE ?
                 ORDER BY p.nom
             """;
-        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             String like = "%" + filtre + "%";
             ps.setString(1, like);
             ps.setString(2, like);
@@ -171,7 +188,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
 
     public void add(Prestataire p) {
         String sql = "INSERT INTO prestataires(nom,societe,telephone,email,note,facturation,date_contrat,date_contrat_ts) VALUES(?,?,?,?,?,?,?,?)";
-        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             fill(ps, p);
             ps.executeUpdate();
         } catch (SQLException e) {
@@ -184,7 +201,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
                 UPDATE prestataires SET
                 nom=?,societe=?,telephone=?,email=?,note=?,facturation=?,date_contrat=?,date_contrat_ts=? WHERE id=?
             """;
-        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             fill(ps, p);
             ps.setInt(9, p.getId());
             ps.executeUpdate();
@@ -194,7 +211,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
     }
 
     public void delete(int pid) {
-        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement("DELETE FROM prestataires WHERE id=?")) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement("DELETE FROM prestataires WHERE id=?")) {
             ps.setInt(1, pid);
             ps.executeUpdate();
         } catch (SQLException e) {
@@ -204,7 +221,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
 
     public Prestataire findPrestataire(int pid){
         String sql = "SELECT * FROM prestataires WHERE id=?";
-        try(Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)){
+        try(Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)){
             ps.setInt(1, pid);
             ResultSet rs = ps.executeQuery();
             if(!rs.next()) return null;
@@ -214,7 +231,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
     public void addService(int pid, String desc) {
         String sql = "INSERT INTO services(prestataire_id,description,date,date_ts) VALUES(?,?,?,?)";
         LocalDate now = LocalDate.now();
-        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, pid);
             ps.setString(2, desc);
             ps.setString(3, DATE_DB.format(now));
@@ -264,7 +281,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
 
     public List<ServiceRow> services(int pid) {
         String sql = "SELECT description,date,date_ts FROM services WHERE prestataire_id=? ORDER BY date_ts";
-        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, pid);
             ResultSet rs = ps.executeQuery();
             List<ServiceRow> out = new ArrayList<>();
@@ -287,7 +304,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
 
     public void addFacture(Facture f) {
         String sql = "INSERT INTO factures(prestataire_id,description,echeance,echeance_ts,montant_ht,paye,date_paiement,date_paiement_ts) VALUES(?,?,?,?,?,?,?,?)";
-        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, f.getPrestataireId());
             ps.setString(2, f.getDescription());
             ps.setString(3, f.getEcheance().format(DATE_DB));
@@ -310,7 +327,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
 
     public void setFacturePayee(int id, boolean payee) {
         String sql = "UPDATE factures SET paye=?,date_paiement=?,date_paiement_ts=? WHERE id=?";
-        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, payee ? 1 : 0);
             if (payee) {
                 LocalDate now = LocalDate.now();
@@ -329,7 +346,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
 
     public List<Facture> factures(int pid, Boolean payee) {
         String sql = "SELECT * FROM factures WHERE prestataire_id=? " + (payee == null ? "" : "AND paye=? ") + "ORDER BY echeance_ts";
-        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             int idx = 1;
             ps.setInt(idx++, pid);
             if (payee != null) ps.setInt(idx++, payee ? 1 : 0);
@@ -373,7 +390,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
             SELECT * FROM factures
             WHERE paye=0 AND preavis_envoye=0 AND
                   echeance_ts <= ?""";
-        try(Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)){
+        try(Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)){
             ps.setLong(1, lim.toEpochSecond(ZoneOffset.UTC));
             ResultSet rs = ps.executeQuery();
             List<Facture> l = new ArrayList<>();
@@ -382,7 +399,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
         }catch(SQLException e){ throw new RuntimeException(e);}  }
 
     public void marquerPreavisEnvoye(int fid){
-        try(Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(
+        try(Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(
             "UPDATE factures SET preavis_envoye=1 WHERE id=?")){
             ps.setInt(1,fid); ps.executeUpdate();
         }catch(SQLException e){ throw new RuntimeException(e);} }
@@ -393,7 +410,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
             INSERT INTO rappels(facture_id,dest,sujet,corps,date_envoi,date_envoi_ts)
             VALUES(?,?,?,?,?,?)
         """;
-        try (Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)){
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)){
             ps.setInt   (1, r.factureId());
             ps.setString(2, r.dest());
             ps.setString(3, r.sujet());
@@ -406,7 +423,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
 
     public List<Rappel> rappelsÀEnvoyer(){
         String sql = "SELECT * FROM rappels WHERE envoye=0 AND date_envoi_ts<=?";
-        try(Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(sql)){
+        try(Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)){
             ps.setLong(1, LocalDateTime.now().toEpochSecond(ZoneOffset.UTC));
             ResultSet rs = ps.executeQuery();
             List<Rappel> l = new ArrayList<>();
@@ -425,7 +442,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
     }
 
     public void markRappelEnvoyé(int id){
-        try(Connection conn = newConnection(path); PreparedStatement ps = conn.prepareStatement(
+        try(Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(
             "UPDATE rappels SET envoye=1 WHERE id=?")){
             ps.setInt(1,id); ps.executeUpdate();
         }catch(SQLException e){ throw new RuntimeException(e); }
