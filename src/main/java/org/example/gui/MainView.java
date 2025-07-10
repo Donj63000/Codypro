@@ -299,8 +299,18 @@ public class MainView {
             try {
                 String nom = fields[0].getText().trim();
                 if (nom.isEmpty()) throw new IllegalArgumentException("Nom obligatoire.");
+                if (nom.contains("\n") || nom.contains("\"")) {
+                    throw new IllegalArgumentException("Caractère interdit dans le nom");
+                }
+                checkUserInput(nom, "nom");
+
                 if (!fields[3].getText().isBlank() && !mailRegex.matcher(fields[3].getText()).matches())
                     throw new IllegalArgumentException("Email invalide.");
+
+                for (int i : new int[]{1,2,3,5,6}) {
+                    checkUserInput(fields[i].getText(), lab[i].toLowerCase());
+                }
+
                 int note = Integer.parseInt(fields[4].getText());
                 if (note < 0 || note > 100) throw new IllegalArgumentException("Note 0-100.");
                 String dateStr = fields[6].getText().trim();
@@ -345,7 +355,14 @@ public class MainView {
         td.setTitle("Nouveau service");
         td.setHeaderText("Description du service");
         td.showAndWait().ifPresent(desc -> {
-            if (!desc.isBlank()) runAsync(() -> dao.addService(p.getId(), desc), null);
+            if (!desc.isBlank()) {
+                try {
+                    checkUserInput(desc, "description");
+                    runAsync(() -> dao.addService(p.getId(), desc), null);
+                } catch (Exception e) {
+                    alert(e.getMessage());
+                }
+            }
         });
     }
 
@@ -494,6 +511,16 @@ public class MainView {
 
         d.getDialogPane().setContent(gp);
 
+        Button ok = (Button) d.getDialogPane().lookupButton(ButtonType.OK);
+        ok.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            try {
+                checkUserInput(tfDesc.getText(), "description");
+            } catch (Exception e) {
+                alert(e.getMessage());
+                ev.consume();
+            }
+        });
+
         d.setResultConverter(bt -> {
             if(bt==ButtonType.OK){
                 return new Facture(0,p.getId(),tfDesc.getText(),
@@ -543,6 +570,17 @@ public class MainView {
         dlg.getDialogPane().setContent(gp);
         dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
 
+        Button ok = (Button) dlg.getDialogPane().lookupButton(ButtonType.OK);
+        ok.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            try {
+                checkUserInput(tfDest.getText(), "destinataire");
+                checkUserInput(tfSujet.getText(), "sujet");
+            } catch (Exception e) {
+                alert(e.getMessage());
+                ev.consume();
+            }
+        });
+
         dlg.setResultConverter(bt -> {
             if(bt==ButtonType.OK){
                 MailPrefs cfg = mailPrefsDao.load();     // charger la config
@@ -579,6 +617,18 @@ public class MainView {
         Alert a = new Alert(Alert.AlertType.ERROR, msg, ButtonType.OK);
         ThemeManager.apply(a);
         a.showAndWait();
+    }
+
+    private static void checkUserInput(String val, String champ) {
+        if (val == null) return;
+        if (val.contains("\n") || val.contains("\"")) {
+            throw new IllegalArgumentException("Caractère interdit dans le " + champ);
+        }
+        for (int i = 0; i < val.length(); i++) {
+            if (val.charAt(i) < 32) {
+                throw new IllegalArgumentException("Caractère interdit dans le " + champ);
+            }
+        }
     }
 
     public void shutdownExecutor() {
