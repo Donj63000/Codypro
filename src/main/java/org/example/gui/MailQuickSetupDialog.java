@@ -108,6 +108,14 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         bOAuth.getStyleClass().add("accent");
         bOAuth.setVisible(false);
         bOAuth.setOnAction(ev -> {
+            if (!tfClient.getText().contains(":")) {
+                Alert a = new Alert(Alert.AlertType.ERROR,
+                        "Les champs clientId et clientSecret doivent être renseignés",
+                        ButtonType.OK);
+                ThemeManager.apply(a);
+                a.showAndWait();
+                return;
+            }
             try {
                 MailPrefs base = prefsBox[0];
                 MailPrefs tmp = new MailPrefs(
@@ -256,6 +264,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
                 .or(rbOauth2.selectedProperty().and(oauthInvalid));
         Button ok = (Button) getDialogPane().lookupButton(ButtonType.OK);
         ok.disableProperty().bind(invalid);
+        bOAuth.disableProperty().bind(oauthInvalid);
 
         bTest.setOnAction(ev -> {
             MailPrefs base = MailPrefs.fromPreset(cbProv.getValue());
