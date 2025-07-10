@@ -43,7 +43,7 @@ public class MailQuickSetupDialogAutoTest {
                     oauth_refresh TEXT,
                     oauth_expiry INTEGER,
                     from_addr TEXT NOT NULL,
-                    copy_to_self TEXT,
+                    copy_to_self TEXT NOT NULL DEFAULT '',
                     delay_hours INTEGER NOT NULL DEFAULT 48,
                     style TEXT,
                     subj_tpl_presta TEXT NOT NULL,
