@@ -90,7 +90,7 @@ de passe. Si vous préférez un autre serveur, ouvrez la section avancée et sai
 simplement ses paramètres SMTP.
 
 Un mode avancé d'authentification Gmail est maintenant disponible. Il repose
-sur les bibliothèques officielles Google (`GmailOAuth2Service`) et permet de
+sur la classe `GoogleAuthService` et permet de
 générer un `refresh_token` permanent puis un `access_token` à la volée pour les
 envois. Sélectionnez **Gmail OAuth2** dans la boîte de configuration rapide et
 cliquez sur *Se connecter à Google* pour autoriser l'application.

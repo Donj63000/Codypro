@@ -9,13 +9,14 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import org.example.dao.MailPrefsDAO;
-import org.example.mail.GmailOAuth2Service;
+import org.example.mail.GoogleAuthService;
 import org.example.mail.MailPrefs;
 import org.example.mail.Mailer;
 import org.example.mail.SmtpPreset;
 import org.example.mail.autodetect.AutoConfigProvider;
 import org.example.mail.autodetect.AutoConfigResult;
 import org.example.mail.autodetect.DefaultAutoConfigProvider;
+import java.util.Properties;
 import javafx.concurrent.Task;
 import jakarta.mail.*;
 import jakarta.mail.internet.InternetAddress;
@@ -61,7 +62,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
 
         final MailPrefs[] prefsBox = { current };
         final String[] oauthBox = { current.oauthClient() };
-        final GmailOAuth2Service[] gmailSvc = { null };
+        final GoogleAuthService[] gmailSvc = { null };
 
         // choose between classical SMTP and Gmail OAuth2
         ToggleGroup tgMode = new ToggleGroup();
@@ -128,8 +129,8 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
                         base.subjPresta(), base.bodyPresta(),
                         base.subjSelf(), base.bodySelf()
                 );
-                GmailOAuth2Service svc = new GmailOAuth2Service(tmp);
-                svc.authorizeInteractive();
+                GoogleAuthService svc = new GoogleAuthService(tmp);
+                svc.interactiveAuth();
                 gmailSvc[0] = svc;
                 tfGmail.setText(tfUser.getText());
                 tfGmail.setVisible(true);
@@ -294,7 +295,27 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
             td.showAndWait().ifPresent(addr -> {
                 try {
                     if (rbOauth2.isSelected() && gmailSvc[0] != null) {
-                        Session s = gmailSvc[0].createSession(tfGmail.getText());
+                        String token = gmailSvc[0].getAccessToken();
+                        Properties p = new Properties();
+                        p.put("mail.smtp.auth", "true");
+                        if (cbSSL.isSelected()) {
+                            p.put("mail.smtp.ssl.enable", "true");
+                        } else {
+                            p.put("mail.smtp.starttls.enable", "true");
+                        }
+                        p.put("mail.smtp.host", tfHost.getText());
+                        p.put("mail.smtp.port", tfPort.getText());
+                        p.put("mail.smtp.sasl.enable", "true");
+                        p.put("mail.smtp.sasl.mechanisms", "XOAUTH2");
+                        p.put("mail.smtp.auth.mechanisms", "XOAUTH2");
+                        p.put("mail.smtp.auth.login.disable", "true");
+                        p.put("mail.smtp.auth.plain.disable", "true");
+                        Session s = Session.getInstance(p, new Authenticator() {
+                            @Override
+                            protected PasswordAuthentication getPasswordAuthentication() {
+                                return new PasswordAuthentication(tfGmail.getText(), token);
+                            }
+                        });
                         Message m = new MimeMessage(s);
                         m.setFrom(new InternetAddress(tfFrom.getText()));
                         m.setRecipients(Message.RecipientType.TO, InternetAddress.parse(addr, false));
