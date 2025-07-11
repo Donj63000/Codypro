@@ -119,6 +119,10 @@ public class MailSettingsDialog extends Dialog<MailPrefs> {
             ThemeManager.apply(td);
             td.showAndWait().ifPresent(addr -> {
                 try {
+                    if (addr == null || addr.isBlank()) {
+                        System.err.println("Envoi de test ignoré (destinataire vide)");
+                        return;
+                    }
                     Mailer.send(tmp, addr, "Test", "Ceci est un message de test.");
                     Alert a = new Alert(Alert.AlertType.INFORMATION, "E-mail envoyé", ButtonType.OK);
                     ThemeManager.apply(a);
