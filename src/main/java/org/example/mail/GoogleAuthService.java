@@ -15,6 +15,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -44,6 +45,7 @@ public class GoogleAuthService implements OAuthService {
         String[] client = parseClient(prefs.oauthClient());
         if (client[0].isEmpty()) throw new IllegalStateException("Missing client id");
         try {
+            String state = UUID.randomUUID().toString();
             HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
             CompletableFuture<String> codeFuture = new CompletableFuture<>();
             server.createContext("/oauth", ex -> {
@@ -52,7 +54,12 @@ public class GoogleAuthService implements OAuthService {
                 ex.sendResponseHeaders(200, resp.length());
                 try (OutputStream os = ex.getResponseBody()) { os.write(resp.getBytes()); }
                 String code = extractParam(query, "code");
-                if (code != null) codeFuture.complete(code);
+                String returnedState = extractParam(query, "state");
+                if (code != null && state.equals(returnedState)) {
+                    codeFuture.complete(code);
+                } else if (!codeFuture.isDone()) {
+                    codeFuture.completeExceptionally(new IllegalStateException("Invalid state"));
+                }
             });
             server.start();
             int port = server.getAddress().getPort();
@@ -63,7 +70,8 @@ public class GoogleAuthService implements OAuthService {
                     "&redirect_uri=" + enc(redirect) +
                     "&scope=" + enc("https://mail.google.com/") +
                     "&access_type=offline" +
-                    "&prompt=consent";
+                    "&prompt=consent" +
+                    "&state=" + enc(state);
             Desktop.getDesktop().browse(URI.create(url));
             String code = codeFuture.join();
             server.stop(0);
