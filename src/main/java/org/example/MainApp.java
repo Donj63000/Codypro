@@ -54,6 +54,10 @@ public class MainApp extends Application {
         // ② rappels manuels (table rappels)
         dao.rappelsÀEnvoyer().forEach(r -> {
             try {
+                if (r.dest() == null || r.dest().isBlank()) {
+                    System.err.println("Rappel ignoré (destinataire vide) pour id=" + r.id());
+                    return;
+                }
                 Mailer.send(cfg, r.dest(), r.sujet(), r.corps());
                 dao.markRappelEnvoyé(r.id());
             } catch (MessagingException ex) {
@@ -73,15 +77,20 @@ public class MainApp extends Application {
 
             try {
                 /* a) mail au prestataire */
-                Mailer.send(cfg, pr.getEmail(),
-                        Mailer.subjToPresta(cfg,v),
-                        Mailer.bodyToPresta(cfg,v));
+                if (pr.getEmail() != null && !pr.getEmail().isBlank()) {
+                    Mailer.send(cfg, pr.getEmail(),
+                            Mailer.subjToPresta(cfg,v),
+                            Mailer.bodyToPresta(cfg,v));
+                } else {
+                    System.err.println("Pré‑avis ignoré (destinataire vide) pour facture=" + f.getId());
+                }
 
                 /* b) mail à nous‑même si renseigné */
-                if (!cfg.copyToSelf().isBlank())
+                if (cfg.copyToSelf() != null && !cfg.copyToSelf().isBlank()) {
                     Mailer.send(cfg, cfg.copyToSelf(),
-                        Mailer.subjToSelf(cfg,v),
-                        Mailer.bodyToSelf(cfg,v));
+                            Mailer.subjToSelf(cfg,v),
+                            Mailer.bodyToSelf(cfg,v));
+                }
 
                 dao.marquerPreavisEnvoye(f.getId());
                 System.out.println("Pré‑avis envoyé pour facture "+f.getId());

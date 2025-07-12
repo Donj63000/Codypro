@@ -599,6 +599,10 @@ public class MainView {
                 MailPrefs cfg = mailPrefsDao.load();     // charger la config
                 if(cbNow.isSelected()){
                     runAsync(() -> {
+                        if (tfDest.getText() == null || tfDest.getText().isBlank()) {
+                            System.err.println("Envoi immédiat ignoré (destinataire vide)");
+                            return null;
+                        }
                         Map<String,String> v = Mailer.vars(pr,f);
                         Mailer.send(cfg,
                                     tfDest.getText(),

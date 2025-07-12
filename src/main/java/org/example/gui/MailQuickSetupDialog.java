@@ -160,7 +160,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
             tfHost.setDisable(!classic);
             tfPort.setDisable(!classic);
             cbSSL.setDisable(!classic);
-            tfUser.setDisable(!classic);
+            tfUser.setDisable(false);
             tfPwd.setDisable(!classic);
             cbAuto.setDisable(!classic);
             bOAuth.setVisible(!classic);
@@ -303,6 +303,10 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
             ThemeManager.apply(td);
             td.showAndWait().ifPresent(addr -> {
                 try {
+                    if (addr == null || addr.isBlank()) {
+                        System.err.println("Envoi de test ignoré (destinataire vide)");
+                        return;
+                    }
                     if (rbOauth2.isSelected() && gmailSvc[0] != null) {
                         String token = gmailSvc[0].getAccessToken();
                         Properties p = new Properties();
