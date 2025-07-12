@@ -1,5 +1,7 @@
 package org.example.mail;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import org.example.dao.MailPrefsDAO;
 
@@ -7,21 +9,22 @@ import java.awt.Desktop;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-/** Helper for Microsoft Outlook/Office365 OAuth authentication. */
+/**
+ * Helper for Microsoft Outlook/Office365 OAuth authentication using Jackson.
+ */
 public class MicrosoftAuthService implements OAuthService {
     private final MailPrefsDAO dao;
     private MailPrefs prefs;
     private final HttpClient http = HttpClient.newHttpClient();
+    private final ObjectMapper mapper = new ObjectMapper();
     private String accessToken;
 
     public MicrosoftAuthService(MailPrefsDAO dao) {
@@ -35,21 +38,11 @@ public class MicrosoftAuthService implements OAuthService {
         this.prefs = prefs;
     }
 
-    private String[] client() {
-        String[] parts = prefs.oauthClient().split(":", 2);
-        if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
-            throw new IllegalStateException("OAuth client id/secret missing");
-        }
-        return parts;
-    }
-
-    private String clientId()  { return client()[0]; }
-    private String clientSec() { return client()[1]; }
-
+    /** Launch interactive OAuth flow and persist refresh token. */
     @Override
     public synchronized void interactiveAuth() {
-        String cid = clientId();
-        if (cid.isEmpty()) throw new IllegalStateException("Missing client id");
+        String[] client = parseClient(prefs.oauthClient());
+        if (client[0].isEmpty()) throw new IllegalStateException("Missing client id");
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
             CompletableFuture<String> codeFuture = new CompletableFuture<>();
@@ -66,7 +59,7 @@ public class MicrosoftAuthService implements OAuthService {
             String redirect = "http://localhost:" + port + "/oauth";
             String url = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize" +
                     "?response_type=code" +
-                    "&client_id=" + enc(cid) +
+                    "&client_id=" + enc(client[0]) +
                     "&redirect_uri=" + enc(redirect) +
                     "&scope=" + enc("offline_access https://outlook.office.com/SMTP.Send") +
                     "&prompt=consent";
@@ -78,15 +71,16 @@ public class MicrosoftAuthService implements OAuthService {
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(
                             "code=" + enc(code) +
-                            "&client_id=" + enc(cid) +
-                            "&client_secret=" + enc(clientSec()) +
+                            "&client_id=" + enc(client[0]) +
+                            "&client_secret=" + enc(client[1]) +
                             "&redirect_uri=" + enc(redirect) +
                             "&grant_type=authorization_code"))
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            accessToken = jsonString(resp.body(), "access_token");
-            String refresh = jsonString(resp.body(), "refresh_token");
-            long exp = jsonLong(resp.body(), "expires_in");
+            JsonNode json = mapper.readTree(resp.body());
+            accessToken = json.path("access_token").asText(null);
+            String refresh = json.path("refresh_token").asText("");
+            long exp = json.path("expires_in").asLong();
             long expiry = System.currentTimeMillis() / 1000 + exp;
             prefs = updatePrefs(refresh, expiry);
             if (dao != null) dao.save(prefs);
@@ -95,6 +89,7 @@ public class MicrosoftAuthService implements OAuthService {
         }
     }
 
+    /** Return a valid access token, refreshing if required. */
     @Override
     public synchronized String getAccessToken() {
         long now = System.currentTimeMillis() / 1000;
@@ -104,28 +99,42 @@ public class MicrosoftAuthService implements OAuthService {
         return accessToken;
     }
 
+    /** Refresh the access token using the stored refresh token. */
     @Override
     public synchronized void refreshAccessToken() {
         String refresh = prefs.oauthRefresh();
         if (refresh.isBlank()) throw new IllegalStateException("No refresh token");
+        String[] client = parseClient(prefs.oauthClient());
         try {
             HttpRequest req = HttpRequest.newBuilder(URI.create("https://login.microsoftonline.com/common/oauth2/v2.0/token"))
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(
-                            "client_id=" + enc(clientId()) +
-                            "&client_secret=" + enc(clientSec()) +
+                            "client_id=" + enc(client[0]) +
+                            "&client_secret=" + enc(client[1]) +
                             "&refresh_token=" + enc(refresh) +
                             "&grant_type=refresh_token"))
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            accessToken = jsonString(resp.body(), "access_token");
-            long exp = jsonLong(resp.body(), "expires_in");
+            JsonNode json = mapper.readTree(resp.body());
+            accessToken = json.path("access_token").asText(null);
+            long exp = json.path("expires_in").asLong();
             long expiry = System.currentTimeMillis() / 1000 + exp;
             prefs = updatePrefs(refresh, expiry);
             if (dao != null) dao.save(prefs);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private static String[] parseClient(String val) {
+        String[] c = val == null ? new String[]{"", ""} : val.split(":", 2);
+        if (c.length < 2) {
+            String[] tmp = new String[2];
+            tmp[0] = c.length > 0 ? c[0] : "";
+            tmp[1] = "";
+            c = tmp;
+        }
+        return c;
     }
 
     private static String enc(String s) {
@@ -141,16 +150,6 @@ public class MicrosoftAuthService implements OAuthService {
             }
         }
         return null;
-    }
-
-    private static String jsonString(String body, String key) {
-        Matcher m = Pattern.compile("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"").matcher(body);
-        return m.find() ? m.group(1) : null;
-    }
-
-    private static long jsonLong(String body, String key) {
-        Matcher m = Pattern.compile("\"" + key + "\"\\s*:\\s*(\\d+)").matcher(body);
-        return m.find() ? Long.parseLong(m.group(1)) : 0L;
     }
 
     private MailPrefs updatePrefs(String refresh, long expiry) {
