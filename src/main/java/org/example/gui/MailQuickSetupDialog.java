@@ -8,6 +8,7 @@ import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import org.example.gui.MailOAuthHelpDialog;
 import org.example.dao.MailPrefsDAO;
 import org.example.mail.GoogleAuthService;
 import org.example.mail.MailPrefs;
@@ -70,6 +71,8 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         ToggleGroup tgMode = new ToggleGroup();
         RadioButton rbClassic = new RadioButton("SMTP classique");
         RadioButton rbOauth2 = new RadioButton("Gmail OAuth2");
+        Button bHelp = new Button("Aide");
+        bHelp.setOnAction(ev -> new MailOAuthHelpDialog().showAndWait());
         rbClassic.setToggleGroup(tgMode);
         rbOauth2.setToggleGroup(tgMode);
         rbClassic.setSelected(true);
@@ -208,7 +211,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         GridPane gp = new GridPane();
         gp.setHgap(8); gp.setVgap(6); gp.setPadding(new Insets(12));
         int r = 0;
-        gp.addRow(r++, new Label("Mode d'envoi :"), rbClassic, rbOauth2);
+        gp.addRow(r++, new Label("Mode d'envoi :"), rbClassic, rbOauth2, bHelp);
         gp.addRow(r++, new Label("Fournisseur :"), cbProv);
         gp.addRow(r++, new Label("Client OAuth :"), tfClient);
         gp.addRow(r++, new Label("Adresse Gmail :"), tfGmail);
