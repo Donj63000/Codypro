@@ -24,6 +24,7 @@ import jakarta.mail.internet.MimeMessage;
 
 /** Dialog providing simplified e‑mail configuration using provider presets. */
 public class MailQuickSetupDialog extends Dialog<MailPrefs> {
+    private final MailPrefsDAO dao;
     private final ComboBox<String> cbStyle;
     private final TextArea taSubjP;
     private final TextArea taBodyP;
@@ -54,6 +55,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
     }
 
     public MailQuickSetupDialog(MailPrefs current, MailPrefsDAO dao, AutoConfigProvider provider) {
+        this.dao = dao;
         this.autoProv = provider;
         setTitle("Paramètres e-mail");
         setResizable(true);
@@ -129,10 +131,12 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
                         base.subjPresta(), base.bodyPresta(),
                         base.subjSelf(), base.bodySelf()
                 );
-                GoogleAuthService svc = new GoogleAuthService(tmp);
+                dao.save(tmp);
+                GoogleAuthService svc = new GoogleAuthService(dao);
                 svc.interactiveAuth();
+                prefsBox[0] = dao.load();
                 gmailSvc[0] = svc;
-                tfGmail.setText(tfUser.getText());
+                tfGmail.setText(prefsBox[0].user());
                 tfGmail.setVisible(true);
                 Alert a = new Alert(Alert.AlertType.INFORMATION, "Authentification réussie", ButtonType.OK);
                 ThemeManager.apply(a);
@@ -182,7 +186,9 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
                     cbSSL.setSelected(res.ssl());
                 }
             });
-            new Thread(task, "smtp-auto").start();
+            Thread th = new Thread(task, "smtp-auto");
+            th.setDaemon(true);
+            th.start();
         });
 
         // react to provider change
