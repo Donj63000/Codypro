@@ -2,6 +2,7 @@ package org.example.mail;
 
 import java.sql.*;
 import java.util.Map;
+import org.example.util.TokenCrypto;
 
 public record MailPrefs(
         String host, int port, boolean ssl,
@@ -88,9 +89,11 @@ public record MailPrefs(
         String provider = rs.getString("provider");
         if(provider == null) provider = "";
         String oauthClient = rs.getString("oauth_client");
-        if(oauthClient == null) oauthClient = "";
+        if (oauthClient == null) oauthClient = "";
+        else oauthClient = TokenCrypto.decrypt(oauthClient);
         String oauthRefresh = rs.getString("oauth_refresh");
-        if(oauthRefresh == null) oauthRefresh = "";
+        if (oauthRefresh == null) oauthRefresh = "";
+        else oauthRefresh = TokenCrypto.decrypt(oauthRefresh);
         long expiry = 0L;
         try {
             expiry = rs.getLong("oauth_expiry");
@@ -128,8 +131,8 @@ public record MailPrefs(
         ps.setString(4, user());
         ps.setString(5, pwd());
         ps.setString(6, provider());
-        ps.setString(7, oauthClient());
-        ps.setString(8, oauthRefresh());
+        ps.setString(7, TokenCrypto.encrypt(oauthClient()));
+        ps.setString(8, TokenCrypto.encrypt(oauthRefresh()));
         ps.setLong(9, oauthExpiry());
         ps.setString(10, from());
         ps.setString(11, copyToSelf() == null ? "" : copyToSelf());
