@@ -151,14 +151,12 @@ public class GoogleAuthService implements OAuthService {
     }
 
     private static String[] parseClient(String val) {
-        String[] c = val == null ? new String[]{"", ""} : val.split(":", 2);
-        if (c.length < 2) {
-            String[] tmp = new String[2];
-            tmp[0] = c.length > 0 ? c[0] : "";
-            tmp[1] = "";
-            c = tmp;
+        if (val == null) throw new IllegalArgumentException("No OAuth client configured");
+        String[] parts = val.split(":", 2);
+        if (parts.length < 2 || parts[0].isBlank() || parts[1].isBlank()) {
+            throw new IllegalArgumentException("Client ID and secret must be provided");
         }
-        return c;
+        return parts;
     }
 
     private static String enc(String s) {

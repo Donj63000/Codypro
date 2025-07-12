@@ -114,7 +114,8 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         bOAuth.getStyleClass().add("accent");
         bOAuth.setVisible(false);
         bOAuth.setOnAction(ev -> {
-            if (!tfClient.getText().contains(":")) {
+            String[] parts = tfClient.getText().split(":", 2);
+            if (parts.length < 2 || parts[0].isBlank() || parts[1].isBlank()) {
                 Alert a = new Alert(Alert.AlertType.ERROR,
                         "Les champs clientId et clientSecret doivent être renseignés",
                         ButtonType.OK);
@@ -268,7 +269,10 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
                 .or(tfUser.textProperty().isEmpty())
                 .or(portInvalid);
         BooleanBinding oauthInvalid = Bindings.createBooleanBinding(
-                () -> !tfClient.getText().contains(":"), tfClient.textProperty());
+                () -> {
+                    String[] p = tfClient.getText().split(":", 2);
+                    return p.length < 2 || p[0].isBlank() || p[1].isBlank();
+                }, tfClient.textProperty());
         BooleanBinding invalid = rbClassic.selectedProperty().and(classicInvalid)
                 .or(tfFrom.textProperty().isEmpty())
                 .or(rbOauth2.selectedProperty().and(oauthInvalid));
