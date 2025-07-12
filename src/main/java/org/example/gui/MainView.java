@@ -600,7 +600,7 @@ public class MainView {
                 if(cbNow.isSelected()){
                     runAsync(() -> {
                         Map<String,String> v = Mailer.vars(pr,f);
-                        Mailer.send(cfg,
+                        Mailer.send(mailPrefsDao, cfg,
                                     tfDest.getText(),
                                     Mailer.subjToPresta(cfg,v),
                                     taCorps.getText());     // ici on ne ré‑injecte pas, l’user a déjà édité

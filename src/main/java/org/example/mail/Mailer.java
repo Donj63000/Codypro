@@ -21,6 +21,9 @@ import java.util.*;
 public final class Mailer {
     private Mailer() {}
 
+    /** Keep OAuth services per provider to reuse refreshed tokens. */
+    private static final Map<String, OAuthService> SERVICES = new HashMap<>();
+
     /** Create a mail {@link Session} using the provided configuration. */
     private static Session makeSession(MailPrefs cfg) {
         Properties p = new Properties();
@@ -67,30 +70,32 @@ public final class Mailer {
     /**
      * Send an e-mail using the given configuration.
      *
+     * @param dao     data access used for persistent OAuth parameters
      * @param cfg     mail server preferences
      * @param to      recipient address
      * @param subject mail subject
      * @param body    mail body (plain text)
      */
-    public static void send(MailPrefs cfg, String to, String subject, String body)
+    public static void send(MailPrefsDAO dao, MailPrefs cfg,
+                            String to, String subject, String body)
             throws MessagingException {
         Session s;
         String provider = cfg.provider() == null ? "" : cfg.provider().toLowerCase();
-        switch (provider) {
-            case "gmail" -> {
-                OAuthService svc = new GoogleAuthService(cfg);
-                String token = svc.getAccessToken();
-                s = makeSessionOAuth(cfg, token);
+
+        OAuthService svc = SERVICES.get(provider);
+        if (svc == null) {
+            switch (provider) {
+                case "gmail" -> svc = new GoogleAuthService(dao);
+                default -> svc = OAuthServiceFactory.create(cfg);
             }
-            default -> {
-                OAuthService svc = OAuthServiceFactory.create(cfg);
-                if (svc != null) {
-                    String token = svc.getAccessToken();
-                    s = makeSessionOAuth(cfg, token);
-                } else {
-                    s = makeSession(cfg);
-                }
-            }
+            if (svc != null) SERVICES.put(provider, svc);
+        }
+
+        if (svc != null) {
+            String token = svc.getAccessToken();
+            s = makeSessionOAuth(cfg, token);
+        } else {
+            s = makeSession(cfg);
         }
         Message m = new MimeMessage(s);
         m.setFrom(new InternetAddress(cfg.from()));

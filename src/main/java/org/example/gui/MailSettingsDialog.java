@@ -17,7 +17,10 @@ import org.example.mail.MailPrefs;
  */
 @Deprecated
 public class MailSettingsDialog extends Dialog<MailPrefs> {
-    public MailSettingsDialog(MailPrefs current) {
+    private final MailPrefsDAO dao;
+
+    public MailSettingsDialog(MailPrefs current, MailPrefsDAO dao) {
+        this.dao = dao;
         setTitle("Paramètres e-mail");
         setResizable(true);
         getDialogPane().setPrefSize(680, 520);
@@ -119,7 +122,7 @@ public class MailSettingsDialog extends Dialog<MailPrefs> {
             ThemeManager.apply(td);
             td.showAndWait().ifPresent(addr -> {
                 try {
-                    Mailer.send(tmp, addr, "Test", "Ceci est un message de test.");
+                    Mailer.send(dao, tmp, addr, "Test", "Ceci est un message de test.");
                     Alert a = new Alert(Alert.AlertType.INFORMATION, "E-mail envoyé", ButtonType.OK);
                     ThemeManager.apply(a);
                     a.showAndWait();
@@ -159,7 +162,7 @@ public class MailSettingsDialog extends Dialog<MailPrefs> {
 
     /** Utility entry point to open the dialog and persist changes. */
     public static void open(Stage owner, MailPrefsDAO dao) {
-        MailSettingsDialog d = new MailSettingsDialog(dao.load());
+        MailSettingsDialog d = new MailSettingsDialog(dao.load(), dao);
         ThemeManager.apply(d);
         d.initOwner(owner);
         d.setHeaderText("Configurer le serveur SMTP, modèles et délai.");

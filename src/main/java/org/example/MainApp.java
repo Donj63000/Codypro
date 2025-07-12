@@ -54,7 +54,7 @@ public class MainApp extends Application {
         // ② rappels manuels (table rappels)
         dao.rappelsÀEnvoyer().forEach(r -> {
             try {
-                Mailer.send(cfg, r.dest(), r.sujet(), r.corps());
+                Mailer.send(mailPrefsDao, cfg, r.dest(), r.sujet(), r.corps());
                 dao.markRappelEnvoyé(r.id());
             } catch (MessagingException ex) {
                 handleAuthException(ex);
@@ -73,13 +73,13 @@ public class MainApp extends Application {
 
             try {
                 /* a) mail au prestataire */
-                Mailer.send(cfg, pr.getEmail(),
+                Mailer.send(mailPrefsDao, cfg, pr.getEmail(),
                         Mailer.subjToPresta(cfg,v),
                         Mailer.bodyToPresta(cfg,v));
 
                 /* b) mail à nous‑même si renseigné */
                 if (!cfg.copyToSelf().isBlank())
-                    Mailer.send(cfg, cfg.copyToSelf(),
+                    Mailer.send(mailPrefsDao, cfg, cfg.copyToSelf(),
                         Mailer.subjToSelf(cfg,v),
                         Mailer.bodyToSelf(cfg,v));
 
