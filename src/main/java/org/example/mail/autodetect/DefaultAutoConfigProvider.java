@@ -59,7 +59,14 @@ public class DefaultAutoConfigProvider implements AutoConfigProvider {
                 int code = con.getResponseCode();
                 if (code != 200) continue;
                 try (InputStream in = con.getInputStream()) {
-                    Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(in);
+                    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+                    dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+                    dbf.setFeature("http://xml.org/sax/features/external-general-entities", false);
+                    dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+                    dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+                    dbf.setXIncludeAware(false);
+                    dbf.setExpandEntityReferences(false);
+                    Document doc = dbf.newDocumentBuilder().parse(in);
                     var nodes = doc.getElementsByTagName("outgoingServer");
                     for (int i = 0; i < nodes.getLength(); i++) {
                         var elt = nodes.item(i);
