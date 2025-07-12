@@ -89,6 +89,10 @@ public final class Mailer {
                 default -> svc = OAuthServiceFactory.create(cfg);
             }
             if (svc != null) SERVICES.put(provider, svc);
+        } else if ("gmail".equals(provider) && dao != null
+                && svc instanceof GoogleAuthService gs && !gs.hasDao()) {
+            svc = new GoogleAuthService(dao, gs.prefs());
+            SERVICES.put(provider, svc);
         }
 
         if (svc != null) {

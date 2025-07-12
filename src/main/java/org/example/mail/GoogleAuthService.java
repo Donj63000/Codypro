@@ -42,6 +42,21 @@ public class GoogleAuthService implements OAuthService {
         this.prefs = prefs;
     }
 
+    /**
+     * Internal helper used when a previously created service lacked DAO
+     * support but already fetched tokens.
+     */
+    public GoogleAuthService(MailPrefsDAO dao, MailPrefs prefs) {
+        this.dao = dao;
+        this.prefs = prefs;
+    }
+
+    /** Accessor for current OAuth preferences. */
+    public MailPrefs prefs() { return prefs; }
+
+    /** Whether this service can persist updates. */
+    public boolean hasDao() { return dao != null; }
+
     /** Launch interactive OAuth flow in the user's browser and store refresh token. */
     @Override
     public synchronized void interactiveAuth() {
