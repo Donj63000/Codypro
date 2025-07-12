@@ -81,6 +81,7 @@ public class GoogleAuthService implements OAuthService {
             JsonNode json = mapper.readTree(resp.body());
             accessToken = json.path("access_token").asText(null);
             String refresh = json.path("refresh_token").asText("");
+            if (refresh.isEmpty()) refresh = prefs.oauthRefresh();
             long exp = json.path("expires_in").asLong();
             long expiry = System.currentTimeMillis() / 1000 + exp;
             prefs = updatePrefs(refresh, expiry);
@@ -118,9 +119,11 @@ public class GoogleAuthService implements OAuthService {
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
             JsonNode json = mapper.readTree(resp.body());
             accessToken = json.path("access_token").asText(null);
+            String newRefresh = json.path("refresh_token").asText("");
+            if (newRefresh.isEmpty()) newRefresh = prefs.oauthRefresh();
             long exp = json.path("expires_in").asLong();
             long expiry = System.currentTimeMillis() / 1000 + exp;
-            prefs = updatePrefs(refresh, expiry);
+            prefs = updatePrefs(newRefresh, expiry);
             if (dao != null) dao.save(prefs);
         } catch (Exception e) {
             throw new RuntimeException(e);
