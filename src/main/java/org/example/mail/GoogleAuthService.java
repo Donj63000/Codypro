@@ -15,6 +15,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -64,6 +67,14 @@ public class GoogleAuthService implements OAuthService {
             server.start();
             int port = server.getAddress().getPort();
             String redirect = "http://localhost:" + port + "/oauth";
+
+            byte[] buf = new byte[32];
+            new SecureRandom().nextBytes(buf);
+            String verifier = Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(verifier.getBytes(StandardCharsets.US_ASCII));
+            String challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+
             String url = "https://accounts.google.com/o/oauth2/v2/auth" +
                     "?response_type=code" +
                     "&client_id=" + enc(client[0]) +
@@ -71,7 +82,9 @@ public class GoogleAuthService implements OAuthService {
                     "&scope=" + enc("https://mail.google.com/") +
                     "&access_type=offline" +
                     "&prompt=consent" +
-                    "&state=" + enc(state);
+                    "&state=" + enc(state) +
+                    "&code_challenge=" + enc(challenge) +
+                    "&code_challenge_method=S256";
             Desktop.getDesktop().browse(URI.create(url));
             String code = codeFuture.join();
             server.stop(0);
@@ -81,7 +94,7 @@ public class GoogleAuthService implements OAuthService {
                     .POST(HttpRequest.BodyPublishers.ofString(
                             "code=" + enc(code) +
                             "&client_id=" + enc(client[0]) +
-                            "&client_secret=" + enc(client[1]) +
+                            "&code_verifier=" + enc(verifier) +
                             "&redirect_uri=" + enc(redirect) +
                             "&grant_type=authorization_code"))
                     .build();
@@ -120,7 +133,6 @@ public class GoogleAuthService implements OAuthService {
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(
                             "client_id=" + enc(client[0]) +
-                            "&client_secret=" + enc(client[1]) +
                             "&refresh_token=" + enc(refresh) +
                             "&grant_type=refresh_token"))
                     .build();

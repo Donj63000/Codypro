@@ -80,8 +80,7 @@ en bénéficier vous devez créer un *client OAuth* sur
 1. activez l'API Gmail ;
 2. créez des identifiants **Client OAuth 2.0** de type *Application de bureau*
    ou *Web* et autorisez l'URL de redirection `http://localhost` ;
-3. renseignez l'`client_id` et le `client_secret` dans la base (champ
-   `oauth_client` sous la forme `id:secret`).
+3. renseignez uniquement l'`client_id` dans la base (champ `oauth_client`).
 
 La boîte `MailQuickSetupDialog` contient le lien « Connexion Gmail… » ou
 « Connexion Outlook… » qui lance l'autorisation dans votre navigateur. Une fois
