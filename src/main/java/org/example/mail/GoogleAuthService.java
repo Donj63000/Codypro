@@ -1,5 +1,7 @@
 package org.example.mail;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import org.example.dao.MailPrefsDAO;
 
@@ -7,23 +9,22 @@ import java.awt.Desktop;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- * Helper for Google OAuth authentication.
+ * Helper for Google OAuth authentication using Jackson for JSON parsing.
  */
 public class GoogleAuthService implements OAuthService {
     private final MailPrefsDAO dao;
     private MailPrefs prefs;
     private final HttpClient http = HttpClient.newHttpClient();
+    private final ObjectMapper mapper = new ObjectMapper();
     private String accessToken;
 
     public GoogleAuthService(MailPrefsDAO dao) {
@@ -37,10 +38,8 @@ public class GoogleAuthService implements OAuthService {
         this.prefs = prefs;
     }
 
-    /**
-     * Launch interactive OAuth flow in the user's browser and store
-     * the resulting refresh token and expiry.
-     */
+    /** Launch interactive OAuth flow in the user's browser and store refresh token. */
+    @Override
     public synchronized void interactiveAuth() {
         String[] client = parseClient(prefs.oauthClient());
         if (client[0].isEmpty()) throw new IllegalStateException("Missing client id");
@@ -79,9 +78,10 @@ public class GoogleAuthService implements OAuthService {
                             "&grant_type=authorization_code"))
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            accessToken = jsonString(resp.body(), "access_token");
-            String refresh = jsonString(resp.body(), "refresh_token");
-            long exp = jsonLong(resp.body(), "expires_in");
+            JsonNode json = mapper.readTree(resp.body());
+            accessToken = json.path("access_token").asText(null);
+            String refresh = json.path("refresh_token").asText("");
+            long exp = json.path("expires_in").asLong();
             long expiry = System.currentTimeMillis() / 1000 + exp;
             prefs = updatePrefs(refresh, expiry);
             if (dao != null) dao.save(prefs);
@@ -90,9 +90,8 @@ public class GoogleAuthService implements OAuthService {
         }
     }
 
-    /**
-     * Return a valid access token, refreshing it when necessary.
-     */
+    /** Return a valid access token, refreshing it when necessary. */
+    @Override
     public synchronized String getAccessToken() {
         long now = System.currentTimeMillis() / 1000;
         if (accessToken == null || now >= prefs.oauthExpiry() - 60) {
@@ -101,9 +100,8 @@ public class GoogleAuthService implements OAuthService {
         return accessToken;
     }
 
-    /**
-     * Refresh the access token using the stored refresh token.
-     */
+    /** Refresh the access token using the stored refresh token. */
+    @Override
     public synchronized void refreshAccessToken() {
         String refresh = prefs.oauthRefresh();
         if (refresh.isBlank()) throw new IllegalStateException("No refresh token");
@@ -118,8 +116,9 @@ public class GoogleAuthService implements OAuthService {
                             "&grant_type=refresh_token"))
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            accessToken = jsonString(resp.body(), "access_token");
-            long exp = jsonLong(resp.body(), "expires_in");
+            JsonNode json = mapper.readTree(resp.body());
+            accessToken = json.path("access_token").asText(null);
+            long exp = json.path("expires_in").asLong();
             long expiry = System.currentTimeMillis() / 1000 + exp;
             prefs = updatePrefs(refresh, expiry);
             if (dao != null) dao.save(prefs);
@@ -152,16 +151,6 @@ public class GoogleAuthService implements OAuthService {
             }
         }
         return null;
-    }
-
-    private static String jsonString(String body, String key) {
-        Matcher m = Pattern.compile("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"").matcher(body);
-        return m.find() ? m.group(1) : null;
-    }
-
-    private static long jsonLong(String body, String key) {
-        Matcher m = Pattern.compile("\"" + key + "\"\\s*:\\s*(\\d+)").matcher(body);
-        return m.find() ? Long.parseLong(m.group(1)) : 0L;
     }
 
     private MailPrefs updatePrefs(String refresh, long expiry) {
