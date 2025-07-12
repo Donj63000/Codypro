@@ -332,7 +332,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
                         m.setText("Ceci est un message de test.");
                         Transport.send(m);
                     } else {
-                        Mailer.send(tmp, addr, "Test", "Ceci est un message de test.");
+                        Mailer.send(dao, tmp, addr, "Test", "Ceci est un message de test.");
                     }
                     Alert a = new Alert(Alert.AlertType.INFORMATION, "E-mail envoyé", ButtonType.OK);
                     ThemeManager.apply(a);
