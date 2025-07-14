@@ -48,9 +48,18 @@ public class MicrosoftAuthService implements OAuthService {
             CompletableFuture<String> codeFuture = new CompletableFuture<>();
             server.createContext("/oauth", ex -> {
                 String query = ex.getRequestURI().getRawQuery();
-                String resp = "<html><body>You may close this window.</body></html>";
+                String error = extractParam(query, "error");
+                String resp = (error == null)
+                        ? "<html><body>You may close this window.</body></html>"
+                        : "<html><body>Authorization failed: " + error + "</body></html>";
                 ex.sendResponseHeaders(200, resp.length());
                 try (OutputStream os = ex.getResponseBody()) { os.write(resp.getBytes()); }
+                if (error != null) {
+                    if (!codeFuture.isDone()) {
+                        codeFuture.completeExceptionally(new IllegalStateException(error));
+                    }
+                    return;
+                }
                 String code = extractParam(query, "code");
                 if (code != null) codeFuture.complete(code);
             });
