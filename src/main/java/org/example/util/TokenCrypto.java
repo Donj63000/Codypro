@@ -16,10 +16,11 @@ public class TokenCrypto {
 
     static {
         String env = System.getenv("TOKEN_KEY");
-        byte[] k = env == null ? null : env.getBytes(StandardCharsets.UTF_8);
-        if (k == null || k.length == 0) {
-            k = "ChangeThisKey123".getBytes(StandardCharsets.UTF_8);
+        if (env == null || env.isBlank()) {
+            System.err.println("TOKEN_KEY must be defined to run the application");
+            throw new IllegalStateException("TOKEN_KEY is required");
         }
+        byte[] k = env.getBytes(StandardCharsets.UTF_8);
         if (k.length < 16) {
             byte[] t = new byte[16];
             System.arraycopy(k, 0, t, 0, Math.min(k.length, 16));

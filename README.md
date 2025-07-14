@@ -95,6 +95,6 @@ envois. Sélectionnez **Gmail OAuth2** dans la boîte de configuration rapide et
 cliquez sur *Se connecter à Google* pour autoriser l'application.
 
 Les champs `oauth_client` et `oauth_refresh` sont chiffrés avant
-l'enregistrement en base. La clé symétrique peut être définie via la
-variable d'environnement `TOKEN_KEY` (seuls les 16 octets utilisés). Un
-mot de passe par défaut est appliqué si la variable est absente.
+l'enregistrement en base. La clé symétrique doit être définie via la
+variable d'environnement `TOKEN_KEY` (seuls les 16 octets utilisés).
+L'application refuse de démarrer si cette variable est absente.
