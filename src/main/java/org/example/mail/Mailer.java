@@ -3,6 +3,7 @@ package org.example.mail;
 import jakarta.mail.*;
 import jakarta.mail.internet.*;
 
+import org.example.dao.MailPrefsDAO;
 import org.example.model.Facture;
 import org.example.model.Prestataire;
 
