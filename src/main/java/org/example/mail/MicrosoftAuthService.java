@@ -43,8 +43,8 @@ public class MicrosoftAuthService implements OAuthService {
     public synchronized int interactiveAuth() {
         String[] client = parseClient(prefs.oauthClient());
         if (client[0].isEmpty()) throw new IllegalStateException("Missing client id");
+        HttpServer server = null;
         try {
-            HttpServer server;
             try {
                 server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
             } catch (Exception ex) {
@@ -80,7 +80,6 @@ public class MicrosoftAuthService implements OAuthService {
                     "&prompt=consent";
             Desktop.getDesktop().browse(URI.create(url));
             String code = codeFuture.join();
-            server.stop(0);
 
             HttpRequest req = HttpRequest.newBuilder(URI.create("https://login.microsoftonline.com/common/oauth2/v2.0/token"))
                     .header("Content-Type", "application/x-www-form-urlencoded")
@@ -102,6 +101,8 @@ public class MicrosoftAuthService implements OAuthService {
             return port;
         } catch (Exception e) {
             throw new RuntimeException(e);
+        } finally {
+            if (server != null) server.stop(0);
         }
     }
 
