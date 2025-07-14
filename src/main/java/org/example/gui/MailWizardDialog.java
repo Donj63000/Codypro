@@ -32,9 +32,11 @@ public class MailWizardDialog extends Dialog<MailPrefs> {
         bLogin.getStyleClass().add("accent");
         bLogin.setOnAction(ev -> {
             try {
-                new GoogleAuthService(dao).interactiveAuth();
+                int port = new GoogleAuthService(dao).interactiveAuth();
                 prefsBox[0] = dao.load();
-                Alert a = new Alert(Alert.AlertType.INFORMATION, "Authentification réussie", ButtonType.OK);
+                Alert a = new Alert(Alert.AlertType.INFORMATION,
+                        "Authentification réussie (port " + port + ")",
+                        ButtonType.OK);
                 ThemeManager.apply(a);
                 a.showAndWait();
             } catch (Exception ex) {
