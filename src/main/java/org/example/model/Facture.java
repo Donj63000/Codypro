@@ -61,4 +61,13 @@ public class Facture implements Serializable {
     public String datePaiementFr(){
         return getDatePaiement()==null ? "" : FR.format(getDatePaiement());
     }
+
+    /* ----- calculs ----- */
+    public static BigDecimal calcTva(BigDecimal ht, BigDecimal pct){
+        return ht.multiply(pct).divide(BigDecimal.valueOf(100));
+    }
+
+    public static BigDecimal calcTtc(BigDecimal ht, BigDecimal pct){
+        return ht.add(calcTva(ht,pct));
+    }
 }
