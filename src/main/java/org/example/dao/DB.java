@@ -302,27 +302,19 @@ public class DB implements AutoCloseable, ConnectionProvider {
         return false;
     }
 
+    private static void ensureColumn(Connection conn, String table, String col, String def) throws SQLException {
+        if (!hasColumn(conn, table, col)) {
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE " + table + " ADD COLUMN " + col + " " + def);
+            }
+        }
+    }
+
     private static void ensureFactureMoneyColumns(Connection conn) throws SQLException {
-        if (!hasColumn(conn, "factures", "tva_pct")) {
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("ALTER TABLE factures ADD COLUMN tva_pct REAL");
-            }
-        }
-        if (!hasColumn(conn, "factures", "montant_tva")) {
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("ALTER TABLE factures ADD COLUMN montant_tva REAL");
-            }
-        }
-        if (!hasColumn(conn, "factures", "montant_ttc")) {
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("ALTER TABLE factures ADD COLUMN montant_ttc REAL");
-            }
-        }
-        if (!hasColumn(conn, "factures", "devise")) {
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("ALTER TABLE factures ADD COLUMN devise TEXT");
-            }
-        }
+        ensureColumn(conn, "factures", "tva_pct", "REAL NOT NULL DEFAULT 20");
+        ensureColumn(conn, "factures", "montant_tva", "REAL NOT NULL");
+        ensureColumn(conn, "factures", "montant_ttc", "REAL NOT NULL");
+        ensureColumn(conn, "factures", "devise", "TEXT DEFAULT 'EUR'");
         try (Statement st = conn.createStatement()) {
             st.executeUpdate("UPDATE factures SET tva_pct=20 WHERE tva_pct IS NULL");
             st.executeUpdate("UPDATE factures SET montant_tva=montant_ht*tva_pct/100 WHERE montant_tva IS NULL");
