@@ -18,6 +18,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.math.BigDecimal;
 
 public class DB implements AutoCloseable, ConnectionProvider {
     private static final DateTimeFormatter DATE_FR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -92,6 +93,10 @@ public class DB implements AutoCloseable, ConnectionProvider {
                             echeance TEXT NOT NULL,
                             echeance_ts INTEGER NOT NULL,
                             montant_ht REAL NOT NULL,
+                            tva_pct REAL NOT NULL DEFAULT 20,
+                            montant_tva REAL NOT NULL,
+                            montant_ttc REAL NOT NULL,
+                            devise TEXT DEFAULT 'EUR',
                             paye INTEGER NOT NULL DEFAULT 0,
                             date_paiement TEXT,
                             date_paiement_ts INTEGER,
@@ -258,6 +263,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
         ensureTsColumn(conn, "factures", "echeance_ts", "echeance");
         ensureTsColumn(conn, "factures", "date_paiement_ts", "date_paiement");
         ensureTsColumn(conn, "rappels", "date_envoi_ts", "date_envoi");
+        ensureFactureMoneyColumns(conn);
     }
 
     private static void upgradeCopyToSelf(Connection conn) {
@@ -288,6 +294,43 @@ public class DB implements AutoCloseable, ConnectionProvider {
         }
     }
 
+    private static boolean hasColumn(Connection conn, String table, String col) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("PRAGMA table_info(" + table + ")");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) if (col.equalsIgnoreCase(rs.getString("name"))) return true;
+        }
+        return false;
+    }
+
+    private static void ensureFactureMoneyColumns(Connection conn) throws SQLException {
+        if (!hasColumn(conn, "factures", "tva_pct")) {
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE factures ADD COLUMN tva_pct REAL");
+            }
+        }
+        if (!hasColumn(conn, "factures", "montant_tva")) {
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE factures ADD COLUMN montant_tva REAL");
+            }
+        }
+        if (!hasColumn(conn, "factures", "montant_ttc")) {
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE factures ADD COLUMN montant_ttc REAL");
+            }
+        }
+        if (!hasColumn(conn, "factures", "devise")) {
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE factures ADD COLUMN devise TEXT");
+            }
+        }
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("UPDATE factures SET tva_pct=20 WHERE tva_pct IS NULL");
+            st.executeUpdate("UPDATE factures SET montant_tva=montant_ht*tva_pct/100 WHERE montant_tva IS NULL");
+            st.executeUpdate("UPDATE factures SET montant_ttc=montant_ht+montant_tva WHERE montant_ttc IS NULL");
+            st.executeUpdate("UPDATE factures SET devise='EUR' WHERE devise IS NULL");
+        }
+    }
+
     public List<ServiceRow> services(int pid) {
         String sql = "SELECT description,date,date_ts FROM services WHERE prestataire_id=? ORDER BY date_ts";
         try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -312,21 +355,25 @@ public class DB implements AutoCloseable, ConnectionProvider {
     /* =========================== Factures =========================== */
 
     public void addFacture(Facture f) {
-        String sql = "INSERT INTO factures(prestataire_id,description,echeance,echeance_ts,montant_ht,paye,date_paiement,date_paiement_ts) VALUES(?,?,?,?,?,?,?,?)";
+        String sql = "INSERT INTO factures(prestataire_id,description,echeance,echeance_ts,montant_ht,tva_pct,montant_tva,montant_ttc,devise,paye,date_paiement,date_paiement_ts) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)";
         try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, f.getPrestataireId());
             ps.setString(2, f.getDescription());
             ps.setString(3, f.getEcheance().format(DATE_DB));
             ps.setLong(4, f.getEcheance().atStartOfDay().toEpochSecond(ZoneOffset.UTC));
-            ps.setDouble(5, f.getMontant());
-            ps.setInt(6, f.isPaye() ? 1 : 0);
+            ps.setBigDecimal(5, f.getMontantHt());
+            ps.setBigDecimal(6, f.getTvaPct());
+            ps.setBigDecimal(7, f.getMontantTva());
+            ps.setBigDecimal(8, f.getMontantTtc());
+            ps.setString(9, "EUR");
+            ps.setInt(10, f.isPaye() ? 1 : 0);
             LocalDate dp = f.getDatePaiement();
             if (dp == null) {
-                ps.setNull(7, Types.VARCHAR);
-                ps.setNull(8, Types.INTEGER);
+                ps.setNull(11, Types.VARCHAR);
+                ps.setNull(12, Types.INTEGER);
             } else {
-                ps.setString(7, dp.format(DATE_DB));
-                ps.setLong(8, dp.atStartOfDay().toEpochSecond(ZoneOffset.UTC));
+                ps.setString(11, dp.format(DATE_DB));
+                ps.setLong(12, dp.atStartOfDay().toEpochSecond(ZoneOffset.UTC));
             }
             ps.executeUpdate();
         } catch (SQLException e) {
@@ -387,7 +434,10 @@ public class DB implements AutoCloseable, ConnectionProvider {
                 rs.getInt("prestataire_id"),
                 rs.getString("description"),
                 ech,
-                rs.getDouble("montant_ht"),
+                rs.getBigDecimal("montant_ht"),
+                rs.getBigDecimal("tva_pct"),
+                rs.getBigDecimal("montant_tva"),
+                rs.getBigDecimal("montant_ttc"),
                 rs.getInt("paye") != 0,
                 dp,
                 preavis != 0

@@ -2,6 +2,7 @@ package org.example.model;
 
 import javafx.beans.property.*;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
@@ -13,17 +14,30 @@ public class Facture implements Serializable {
     private final IntegerProperty prestataireId = new SimpleIntegerProperty();
     private final StringProperty  description   = new SimpleStringProperty();
     private final ObjectProperty<LocalDate> echeance = new SimpleObjectProperty<>();
-    private final DoubleProperty montant = new SimpleDoubleProperty();
+    private final ObjectProperty<BigDecimal> montantHt   = new SimpleObjectProperty<>();
+    private final ObjectProperty<BigDecimal> tvaPct      = new SimpleObjectProperty<>();
+    private final ObjectProperty<BigDecimal> montantTva  = new SimpleObjectProperty<>();
+    private final ObjectProperty<BigDecimal> montantTtc  = new SimpleObjectProperty<>();
     private final BooleanProperty paye   = new SimpleBooleanProperty();
     private final ObjectProperty<LocalDate> datePaiement = new SimpleObjectProperty<>();
     private final BooleanProperty preavisEnvoye = new SimpleBooleanProperty();
 
     /* ----- ctor ----- */
-    public Facture(int id,int pid,String desc,LocalDate ech,double m,
+    public Facture(int id,int pid,String desc,LocalDate ech,
+                   BigDecimal montantHt, BigDecimal tvaPct,
+                   BigDecimal montantTva, BigDecimal montantTtc,
                    boolean paye,LocalDate datePay, boolean preavis) {
-        this.id.set(id); prestataireId.set(pid); description.set(desc);
-        echeance.set(ech); montant.set(m); this.paye.set(paye);
-        datePaiement.set(datePay); preavisEnvoye.set(preavis);
+        this.id.set(id);
+        prestataireId.set(pid);
+        description.set(desc);
+        echeance.set(ech);
+        this.montantHt.set(montantHt);
+        this.tvaPct.set(tvaPct);
+        this.montantTva.set(montantTva);
+        this.montantTtc.set(montantTtc);
+        this.paye.set(paye);
+        datePaiement.set(datePay);
+        preavisEnvoye.set(preavis);
     }
 
     /* ----- getters (simplifiés) ----- */
@@ -31,7 +45,10 @@ public class Facture implements Serializable {
     public int getPrestataireId(){return prestataireId.get();}
     public String getDescription(){return description.get();}
     public LocalDate getEcheance(){return echeance.get();}
-    public double getMontant(){return montant.get();}
+    public BigDecimal getMontantHt(){return montantHt.get();}
+    public BigDecimal getTvaPct(){return tvaPct.get();}
+    public BigDecimal getMontantTva(){return montantTva.get();}
+    public BigDecimal getMontantTtc(){return montantTtc.get();}
     public boolean isPaye(){return paye.get();}
     public LocalDate getDatePaiement(){return datePaiement.get();}
     public boolean isPreavisEnvoye(){return preavisEnvoye.get();}

@@ -122,7 +122,7 @@ public final class Mailer {
         return Map.of(
                 "%NOM%", pr.getNom(),
                 "%EMAIL%", pr.getEmail(),
-                "%MONTANT%", String.format("%.2f", f.getMontant()),
+                "%MONTANT%", String.format("%.2f", f.getMontantTtc()),
                 "%ECHEANCE%", f.getEcheanceFr(),
                 "%ID%", String.valueOf(f.getId())
         );
