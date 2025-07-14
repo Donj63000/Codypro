@@ -14,6 +14,9 @@ import java.sql.Connection;
 import java.sql.Statement;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.time.Duration;
+import java.net.CookieHandler;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -112,14 +115,20 @@ public class MicrosoftAuthServiceTest {
         }
         public Optional<java.net.ProxySelector> proxy() { return delegate.proxy(); }
         public Optional<java.net.Authenticator> authenticator() { return delegate.authenticator(); }
-        public java.net.CookieHandler cookieHandler() { return delegate.cookieHandler().orElse(null); }
-        public java.time.Duration connectTimeout() { return delegate.connectTimeout().orElse(null); }
+        @Override                       // Java 17
+        public Optional<Duration> connectTimeout() {
+            return delegate.connectTimeout();        // on propage tel‑quel
+        }
+
+        @Override
+        public Optional<CookieHandler> cookieHandler() {
+            return delegate.cookieHandler();
+        }
         public java.net.http.HttpClient.Redirect followRedirects() { return delegate.followRedirects(); }
         public javax.net.ssl.SSLContext sslContext() { return delegate.sslContext(); }
         public javax.net.ssl.SSLParameters sslParameters() { return delegate.sslParameters(); }
         public java.net.http.HttpClient.Version version() { return delegate.version(); }
         public java.util.Optional<java.util.concurrent.Executor> executor() { return delegate.executor(); }
-        public java.net.http.HttpClient.Builder newBuilder() { return delegate.newBuilder(); }
         public void close() { delegate.close(); }
     }
 }
