@@ -312,13 +312,13 @@ public class DB implements AutoCloseable, ConnectionProvider {
 
     private static void ensureFactureMoneyColumns(Connection conn) throws SQLException {
         ensureColumn(conn, "factures", "tva_pct", "REAL NOT NULL DEFAULT 20");
-        ensureColumn(conn, "factures", "montant_tva", "REAL NOT NULL");
-        ensureColumn(conn, "factures", "montant_ttc", "REAL NOT NULL");
+        ensureColumn(conn, "factures", "montant_tva", "REAL NOT NULL DEFAULT 0");
+        ensureColumn(conn, "factures", "montant_ttc", "REAL NOT NULL DEFAULT 0");
         ensureColumn(conn, "factures", "devise", "TEXT DEFAULT 'EUR'");
         try (Statement st = conn.createStatement()) {
             st.executeUpdate("UPDATE factures SET tva_pct=20 WHERE tva_pct IS NULL");
-            st.executeUpdate("UPDATE factures SET montant_tva=montant_ht*tva_pct/100 WHERE montant_tva IS NULL");
-            st.executeUpdate("UPDATE factures SET montant_ttc=montant_ht+montant_tva WHERE montant_ttc IS NULL");
+            st.executeUpdate("UPDATE factures SET montant_tva=montant_ht*tva_pct/100 WHERE montant_tva = 0");
+            st.executeUpdate("UPDATE factures SET montant_ttc=montant_ht+montant_tva WHERE montant_ttc = 0");
             st.executeUpdate("UPDATE factures SET devise='EUR' WHERE devise IS NULL");
         }
     }

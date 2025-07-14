@@ -10,6 +10,10 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.ArrayList;
+import java.sql.Connection;
+import java.sql.Statement;
+import java.sql.ResultSet;
 import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -120,5 +124,32 @@ public class DBTest {
         assertEquals(pct, stored.getTvaPct());
         assertEquals(mtva, stored.getMontantTva());
         assertEquals(ttc, stored.getMontantTtc());
+    }
+
+    @Test
+    void testMigrationAddsMoneyColumns() throws Exception {
+        try (Connection c = DB.newConnection("old.db"); Statement st = c.createStatement()) {
+            st.executeUpdate("""
+                CREATE TABLE factures(
+                    id INTEGER PRIMARY KEY,
+                    prestataire_id INTEGER NOT NULL,
+                    description TEXT,
+                    echeance TEXT NOT NULL,
+                    echeance_ts INTEGER NOT NULL,
+                    montant_ht REAL NOT NULL,
+                    paye INTEGER NOT NULL DEFAULT 0
+                );
+            """);
+        }
+
+        DB migrated = new DB("old.db");
+        migrated.close();
+
+        try (Connection c = DB.newConnection("old.db"); Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery("PRAGMA table_info(factures)")) {
+            List<String> cols = new ArrayList<>();
+            while (rs.next()) cols.add(rs.getString("name"));
+            assertTrue(cols.containsAll(List.of("tva_pct","montant_tva","montant_ttc","devise")));
+        }
     }
 }
