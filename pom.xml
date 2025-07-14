@@ -61,6 +61,14 @@
             <artifactId>javafx-fxml</artifactId>
             <version>${javafx.version}</version>
         </dependency>
+        <!-- JFXPanel se trouve ici -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-swing</artifactId>
+            <version>${javafx.version}</version>
+            <!-- uniquement nécessaire pour les tests -->
+            <scope>test</scope>
+        </dependency>
 
 
         <!-- OpenPDF (fork LGPL d’iText 4) -->
