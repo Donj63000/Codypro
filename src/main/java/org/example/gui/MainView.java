@@ -9,6 +9,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.beans.property.ReadOnlyBooleanWrapper;
+import java.math.BigDecimal;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
@@ -440,8 +441,8 @@ public class MainView {
         TableColumn<Facture, String> cDescription = new TableColumn<>("Description");
         cDescription.setCellValueFactory(new PropertyValueFactory<>("description"));
 
-        TableColumn<Facture, Double> cMontant = new TableColumn<>("Montant");
-        cMontant.setCellValueFactory(new PropertyValueFactory<>("montant"));
+        TableColumn<Facture, BigDecimal> cMontant = new TableColumn<>("Montant");
+        cMontant.setCellValueFactory(new PropertyValueFactory<>("montantTtc"));
 
         TableColumn<Facture, String> cDatePay = new TableColumn<>("Date paiement");
         cDatePay.setCellValueFactory(new PropertyValueFactory<>("datePaiementFr"));
@@ -536,9 +537,13 @@ public class MainView {
 
         d.setResultConverter(bt -> {
             if(bt==ButtonType.OK){
+                BigDecimal ht = new BigDecimal(tfMont.getText());
+                BigDecimal tva = new BigDecimal("20");
+                BigDecimal mtva = ht.multiply(tva).divide(BigDecimal.valueOf(100));
+                BigDecimal ttc = ht.add(mtva);
                 return new Facture(0,p.getId(),tfDesc.getText(),
                                    dpEch.getValue(),
-                                   Double.parseDouble(tfMont.getText()),
+                                   ht,tva,mtva,ttc,
                                    false,null,false);
             }
             return null;
@@ -565,7 +570,7 @@ public class MainView {
 
         Cordialement.
     """.replace("%NOM%", pr.getNom())
-       .replace("%MONTANT%", String.format("%.2f",f.getMontant()))
+       .replace("%MONTANT%", String.format("%.2f",f.getMontantTtc()))
        .replace("%ECHEANCE%", f.getEcheanceFr())
     );
         taCorps.setPrefRowCount(8);

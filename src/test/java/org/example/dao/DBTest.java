@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -72,7 +73,11 @@ public class DBTest {
         db.add(p);
         int pid = db.list("").get(0).getId();
 
-        Facture f = new Facture(0, pid, "Test", LocalDate.now(), 100.0, false, null, false);
+        BigDecimal ht = new BigDecimal("100");
+        BigDecimal pct = new BigDecimal("20");
+        BigDecimal mtva = ht.multiply(pct).divide(BigDecimal.valueOf(100));
+        BigDecimal ttc = ht.add(mtva);
+        Facture f = new Facture(0, pid, "Test", LocalDate.now(), ht, pct, mtva, ttc, false, null, false);
         db.addFacture(f);
 
         List<Facture> all = db.factures(pid, null);
