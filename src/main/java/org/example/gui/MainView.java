@@ -9,6 +9,8 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.beans.property.ReadOnlyBooleanWrapper;
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.DoubleBinding;
 import java.math.BigDecimal;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
@@ -418,6 +420,8 @@ public class MainView {
         /* ====== TableView ====== */
         TableView<Facture> tv = new TableView<>();
         tv.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        Label totalTtc = new Label();
+        totalTtc.setStyle("-fx-font-weight:bold");
         TableColumn<Facture, Boolean> cPaye = new TableColumn<>("Réglée");
         cPaye.setCellValueFactory(new PropertyValueFactory<>("paye"));
 
@@ -441,13 +445,20 @@ public class MainView {
         TableColumn<Facture, String> cDescription = new TableColumn<>("Description");
         cDescription.setCellValueFactory(new PropertyValueFactory<>("description"));
 
-        TableColumn<Facture, BigDecimal> cMontant = new TableColumn<>("Montant");
+        TableColumn<Facture, BigDecimal> cMontantHt = new TableColumn<>("HT");
+        cMontantHt.setCellValueFactory(new PropertyValueFactory<>("montantHt"));
+
+        TableColumn<Facture, BigDecimal> cTvaPct = new TableColumn<>("TVA %");
+        cTvaPct.setCellValueFactory(new PropertyValueFactory<>("tvaPct"));
+
+        TableColumn<Facture, BigDecimal> cMontant = new TableColumn<>("TTC");
         cMontant.setCellValueFactory(new PropertyValueFactory<>("montantTtc"));
 
         TableColumn<Facture, String> cDatePay = new TableColumn<>("Date paiement");
         cDatePay.setCellValueFactory(new PropertyValueFactory<>("datePaiementFr"));
 
-        tv.getColumns().addAll(cEcheance, cDescription, cMontant, cPaye, cDatePay);
+        tv.getColumns().addAll(cEcheance, cDescription, cMontantHt, cTvaPct,
+                               cMontant, cPaye, cDatePay);
         tv.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
         tv.setRowFactory(tb -> {
             TableRow<Facture> row = new TableRow<>();
@@ -455,7 +466,7 @@ public class MainView {
                 if(ev.getClickCount()==2 && !row.isEmpty()){
                     Facture f = row.getItem();
                     runAsync(() -> dao.setFacturePayee(f.getId(), !f.isPaye()),
-                             () -> refreshFactures(p, tv));
+                             () -> refreshFactures(p, tv, totalTtc));
                 }
             });
             return row;
@@ -467,7 +478,7 @@ public class MainView {
         Button bToggle = new Button("Marquer réglée / attente");
         Button bClose = new Button("Fermer");
 
-        bAdd.setOnAction(ev -> addFactureDialog(p, tv));
+        bAdd.setOnAction(ev -> addFactureDialog(p, tv, totalTtc));
         bMail.setOnAction(ev -> {
             Facture f = tv.getSelectionModel().getSelectedItem();
             if(f==null){ alert("Sélectionnez une facture."); return; }
@@ -478,7 +489,7 @@ public class MainView {
             Facture f = tv.getSelectionModel().getSelectedItem();
             if(f!=null){
                 runAsync(() -> dao.setFacturePayee(f.getId(), !f.isPaye()),
-                         () -> refreshFactures(p, tv));
+                         () -> refreshFactures(p, tv, totalTtc));
             }
         });
         bClose.setOnAction(ev -> win.close());
@@ -487,7 +498,7 @@ public class MainView {
         buttons.setPadding(new Insets(10));
         buttons.getChildren().add(1, bMail); // après "Nouvelle facture"
 
-        VBox root = new VBox(10, title, tv, buttons);
+        VBox root = new VBox(10, title, tv, totalTtc, buttons);
         root.setPadding(new Insets(12));
         Scene sc = new Scene(root, 600, 400);
         ThemeManager.apply(sc);
@@ -496,19 +507,23 @@ public class MainView {
         win.show();
 
         /* charge les données */
-        refreshFactures(p, tv);
+        refreshFactures(p, tv, totalTtc);
     }
 
     /* Helpers */
-    private void refreshFactures(Prestataire p, TableView<Facture> tv){
+    private void refreshFactures(Prestataire p, TableView<Facture> tv, Label lbl){
         runAsync(() -> dao.factures(p.getId(), null),
                  list -> {
                      tv.setItems(FXCollections.observableArrayList(list));
+                     BigDecimal sum = list.stream()
+                            .map(Facture::getMontantTtc)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                     lbl.setText(String.format("Total TTC : %.2f €", sum));
                      refresh(search.getText());
                  });
     }
 
-    private void addFactureDialog(Prestataire p, TableView<Facture> tv){
+    private void addFactureDialog(Prestataire p, TableView<Facture> tv, Label lbl){
         Dialog<Facture> d = new Dialog<>();
         ThemeManager.apply(d);
         d.setTitle("Nouvelle facture – "+p.getNom());
@@ -518,10 +533,25 @@ public class MainView {
         DatePicker dpEch = new DatePicker(LocalDate.now());
         TextField tfDesc = new TextField();
         TextField tfMont = new TextField("0");
+        TextField tfTva = new TextField("20");
+        Label lblTtc = new Label();
+
+        DoubleBinding ttcBinding = Bindings.createDoubleBinding(() -> {
+            try {
+                double ht  = Double.parseDouble(tfMont.getText());
+                double pct = Double.parseDouble(tfTva.getText());
+                return ht * (1 + pct/100.0);
+            } catch (Exception ex) {
+                return 0.0;
+            }
+        }, tfMont.textProperty(), tfTva.textProperty());
+        lblTtc.textProperty().bind(Bindings.format("%.2f", ttcBinding));
 
         gp.addRow(0,new Label("Échéance :"), dpEch);
         gp.addRow(1,new Label("Description :"), tfDesc);
         gp.addRow(2,new Label("Montant HT (€) :"), tfMont);
+        gp.addRow(3,new Label("TVA (%) :"), tfTva);
+        gp.addRow(4,new Label("TTC (€) :"), lblTtc);
 
         d.getDialogPane().setContent(gp);
 
@@ -529,6 +559,8 @@ public class MainView {
         ok.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
             try {
                 checkUserInput(tfDesc.getText(), "description");
+                new BigDecimal(tfMont.getText());
+                new BigDecimal(tfTva.getText());
             } catch (Exception e) {
                 alert(e.getMessage());
                 ev.consume();
@@ -537,20 +569,20 @@ public class MainView {
 
         d.setResultConverter(bt -> {
             if(bt==ButtonType.OK){
-                BigDecimal ht = new BigDecimal(tfMont.getText());
-                BigDecimal tva = new BigDecimal("20");
-                BigDecimal mtva = ht.multiply(tva).divide(BigDecimal.valueOf(100));
-                BigDecimal ttc = ht.add(mtva);
+                BigDecimal ht  = new BigDecimal(tfMont.getText());
+                BigDecimal pct = new BigDecimal(tfTva.getText());
+                BigDecimal mtva = ht.multiply(pct).divide(BigDecimal.valueOf(100));
+                BigDecimal ttc  = ht.add(mtva);
                 return new Facture(0,p.getId(),tfDesc.getText(),
                                    dpEch.getValue(),
-                                   ht,tva,mtva,ttc,
+                                   ht,pct,mtva,ttc,
                                    false,null,false);
             }
             return null;
         });
         d.showAndWait().ifPresent(f ->
             runAsync(() -> dao.addFacture(f),
-                     () -> refreshFactures(p, tv)));
+                     () -> refreshFactures(p, tv, lbl)));
     }
 
     private void afficherDialogRappel(Prestataire pr, Facture f){
