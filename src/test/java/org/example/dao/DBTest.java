@@ -99,4 +99,26 @@ public class DBTest {
         Prestataire stored = db.list("").get(0);
         assertEquals("", stored.getDateContrat());
     }
+
+    @Test
+    void testFactureAmountsPersist() {
+        Prestataire p = createSample();
+        db.add(p);
+        int pid = db.list("").get(0).getId();
+
+        BigDecimal ht = new BigDecimal("123.45");
+        BigDecimal pct = new BigDecimal("17.5");
+        BigDecimal mtva = Facture.calcTva(ht, pct);
+        BigDecimal ttc = Facture.calcTtc(ht, pct);
+        Facture f = new Facture(0, pid, "Amounts", LocalDate.now(), ht, pct, mtva, ttc, false, null, false);
+        db.addFacture(f);
+
+        List<Facture> all = db.factures(pid, null);
+        assertEquals(1, all.size());
+        Facture stored = all.get(0);
+        assertEquals(ht, stored.getMontantHt());
+        assertEquals(pct, stored.getTvaPct());
+        assertEquals(mtva, stored.getMontantTva());
+        assertEquals(ttc, stored.getMontantTtc());
+    }
 }
