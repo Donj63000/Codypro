@@ -137,12 +137,14 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
                 );
                 dao.save(tmp);
                 GoogleAuthService svc = new GoogleAuthService(dao);
-                svc.interactiveAuth();
+                int port = svc.interactiveAuth();
                 prefsBox[0] = dao.load();
                 gmailSvc[0] = svc;
                 tfGmail.setText(prefsBox[0].user());
                 tfGmail.setVisible(true);
-                Alert a = new Alert(Alert.AlertType.INFORMATION, "Authentification réussie", ButtonType.OK);
+                Alert a = new Alert(Alert.AlertType.INFORMATION,
+                        "Authentification réussie (port " + port + ")",
+                        ButtonType.OK);
                 ThemeManager.apply(a);
                 a.showAndWait();
             } catch (Exception ex) {

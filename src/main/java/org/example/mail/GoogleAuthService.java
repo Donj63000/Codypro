@@ -59,13 +59,20 @@ public class GoogleAuthService implements OAuthService {
 
     /** Launch interactive OAuth flow in the user's browser and store refresh token. */
     @Override
-    public synchronized void interactiveAuth() {
+    public synchronized int interactiveAuth() {
         String[] client = parseClient(prefs.oauthClient());
         if (client[0].isEmpty()) throw new IllegalStateException("Missing client id");
+        int fallback = fallbackPort();
+        HttpServer server = null;
+        int port;
         try {
             String state = UUID.randomUUID().toString();
-            HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
             CompletableFuture<String> codeFuture = new CompletableFuture<>();
+            try {
+                server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+            } catch (Exception ex) {
+                server = HttpServer.create(new InetSocketAddress("localhost", fallback), 0);
+            }
             server.createContext("/oauth", ex -> {
                 String query = ex.getRequestURI().getRawQuery();
                 String error = extractParam(query, "error");
@@ -89,7 +96,7 @@ public class GoogleAuthService implements OAuthService {
                 }
             });
             server.start();
-            int port = server.getAddress().getPort();
+            port = server.getAddress().getPort();
             String redirect = "http://localhost:" + port + "/oauth";
 
             byte[] buf = new byte[32];
@@ -131,8 +138,10 @@ public class GoogleAuthService implements OAuthService {
             long expiry = System.currentTimeMillis() / 1000 + exp;
             prefs = updatePrefs(refresh, expiry);
             if (dao != null) dao.save(prefs);
+            return port;
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            if (server != null) server.stop(0);
+            throw new RuntimeException("Failed to start loopback server on ports 0 and " + fallback, e);
         }
     }
 
@@ -196,6 +205,15 @@ public class GoogleAuthService implements OAuthService {
             }
         }
         return null;
+    }
+
+    private static int fallbackPort() {
+        String prop = System.getProperty("oauth.port");
+        if (prop == null || prop.isBlank()) prop = System.getenv("OAUTH_PORT");
+        if (prop != null && !prop.isBlank()) {
+            try { return Integer.parseInt(prop); } catch (Exception ignore) {}
+        }
+        return 53682;
     }
 
     private MailPrefs updatePrefs(String refresh, long expiry) {

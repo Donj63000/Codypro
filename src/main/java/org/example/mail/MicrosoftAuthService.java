@@ -40,11 +40,17 @@ public class MicrosoftAuthService implements OAuthService {
 
     /** Launch interactive OAuth flow and persist refresh token. */
     @Override
-    public synchronized void interactiveAuth() {
+    public synchronized int interactiveAuth() {
         String[] client = parseClient(prefs.oauthClient());
         if (client[0].isEmpty()) throw new IllegalStateException("Missing client id");
         try {
-            HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+            HttpServer server;
+            try {
+                server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+            } catch (Exception ex) {
+                int fb = fallbackPort();
+                server = HttpServer.create(new InetSocketAddress("localhost", fb), 0);
+            }
             CompletableFuture<String> codeFuture = new CompletableFuture<>();
             server.createContext("/oauth", ex -> {
                 String query = ex.getRequestURI().getRawQuery();
@@ -93,6 +99,7 @@ public class MicrosoftAuthService implements OAuthService {
             long expiry = System.currentTimeMillis() / 1000 + exp;
             prefs = updatePrefs(refresh, expiry);
             if (dao != null) dao.save(prefs);
+            return port;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -142,6 +149,15 @@ public class MicrosoftAuthService implements OAuthService {
             throw new IllegalArgumentException("Client ID and secret must be provided");
         }
         return parts;
+    }
+
+    private static int fallbackPort() {
+        String prop = System.getProperty("oauth.port");
+        if (prop == null || prop.isBlank()) prop = System.getenv("OAUTH_PORT");
+        if (prop != null && !prop.isBlank()) {
+            try { return Integer.parseInt(prop); } catch (Exception ignore) {}
+        }
+        return 53682;
     }
 
     private static String enc(String s) {
