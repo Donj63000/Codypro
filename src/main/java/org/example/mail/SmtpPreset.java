@@ -18,8 +18,8 @@ public record SmtpPreset(
                     "smtp.example.com", 465, true, false),
             new SmtpPreset("gmail", "Gmail (OAuth)",
                     "smtp.gmail.com", 587, false, true),
-            new SmtpPreset("outlook", "Outlook / Office365",
-                    "smtp.office365.com", 587, false, false)
+            new SmtpPreset("outlook", "Outlook / Office365 (OAuth)",
+                    "smtp.office365.com", 587, false, true)
     };
 
     /** Find a preset by provider id, ignoring case. */
