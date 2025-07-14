@@ -118,7 +118,6 @@ public class GoogleAuthService implements OAuthService {
                     "&code_challenge_method=S256";
             Desktop.getDesktop().browse(URI.create(url));
             String code = codeFuture.join();
-            server.stop(0);
 
             HttpRequest req = HttpRequest.newBuilder(URI.create("https://oauth2.googleapis.com/token"))
                     .header("Content-Type", "application/x-www-form-urlencoded")
@@ -140,8 +139,9 @@ public class GoogleAuthService implements OAuthService {
             if (dao != null) dao.save(prefs);
             return port;
         } catch (Exception e) {
-            if (server != null) server.stop(0);
             throw new RuntimeException("Failed to start loopback server on ports 0 and " + fallback, e);
+        } finally {
+            if (server != null) server.stop(0);
         }
     }
 
