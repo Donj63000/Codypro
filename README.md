@@ -59,8 +59,8 @@ L'archive générée se trouve dans `target/`.
 
 Un bouton **Paramètres e-mail…** dans la fenêtre principale ouvre la boîte de
 configuration rapide `MailQuickSetupDialog`. Celle‑ci propose une liste de
-fournisseurs (Gmail, Outlook, Personnalisé), un lien **Connexion Gmail…** ou
-**Connexion Outlook…** pour l'authentification OAuth et masque par défaut la
+fournisseurs (Gmail, Outlook / Office365 (OAuth), Personnalisé), un lien **Connexion Gmail…** ou
+**Connexion Microsoft…** pour l'authentification OAuth et masque par défaut la
 section avancée (hôte, port, SSL, identifiants, etc.). Vous pouvez toujours
 déployer cette section pour saisir manuellement un autre serveur SMTP.
 
@@ -83,7 +83,7 @@ en bénéficier vous devez créer un *client OAuth* sur
 3. renseignez uniquement l'`client_id` dans la base (champ `oauth_client`).
 
 La boîte `MailQuickSetupDialog` contient le lien « Connexion Gmail… » ou
-« Connexion Outlook… » qui lance l'autorisation dans votre navigateur. Une fois
+« Connexion Microsoft… » qui lance l'autorisation dans votre navigateur. Une fois
 validée, le jeton est mémorisé et utilisé par `Mailer.send()` sans saisie de mot
 de passe. Si vous préférez un autre serveur, ouvrez la section avancée et saisissez
 simplement ses paramètres SMTP.
