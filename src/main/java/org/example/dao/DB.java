@@ -25,6 +25,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
     private static final DateTimeFormatter DATE_DB = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private final String path;
     private final HikariDataSource ds;
+    private final ConnectionProvider cp;
 
     public static Connection newConnection(String path) throws SQLException {
         SQLiteConfig cfg = new SQLiteConfig();
@@ -35,6 +36,12 @@ public class DB implements AutoCloseable, ConnectionProvider {
         cfg.enforceForeignKeys(true);
         cfg.setOpenMode(SQLiteOpenMode.FULLMUTEX);
         return DriverManager.getConnection("jdbc:sqlite:" + path, cfg.toProperties());
+    }
+
+    public DB(ConnectionProvider cp) {
+        this.path = null;
+        this.ds = null;
+        this.cp = cp;
     }
 
     public DB(String path) {
@@ -52,6 +59,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
         cfg.setJdbcUrl("jdbc:sqlite:" + path);
         cfg.setDataSourceProperties(sqCfg.toProperties());
         ds = new HikariDataSource(cfg);
+        this.cp = ds::getConnection;
 
         try (Connection conn = ds.getConnection()) {
             try (Statement st = conn.createStatement()) {
@@ -162,12 +170,16 @@ public class DB implements AutoCloseable, ConnectionProvider {
 
     @Override
     public void close() {
-        ds.close();
+        if (ds != null) ds.close();
+        else if (cp instanceof AutoCloseable ac) {
+            try { ac.close(); } catch (Exception ignore) {}
+        }
     }
 
     @Override
     public Connection getConnection() throws SQLException {
-        return ds.getConnection();
+        if (ds != null) return ds.getConnection();
+        return cp.getConnection();
     }
 
     public List<Prestataire> list(String filtre) {
