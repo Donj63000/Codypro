@@ -73,13 +73,9 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         RadioButton rbClassic = new RadioButton("SMTP classique");
         RadioButton rbOauth2 = new RadioButton("Gmail OAuth2");
         Button bHelp = new Button("Aide");
-        bHelp.setOnAction(ev -> {
-            if (rbOauth2.isSelected()) {
-                new MailOAuthHelpDialog().showAndWait();
-            } else {
-                new SmtpHelpDialog().showAndWait();
-            }
-        });
+        bHelp.setOnAction(ev -> new MailOAuthHelpDialog().showAndWait());
+        Button bSmtpHelp = new Button("Aide SMTP");
+        bSmtpHelp.setOnAction(ev -> new SmtpHelpDialog().showAndWait());
         rbClassic.setToggleGroup(tgMode);
         rbOauth2.setToggleGroup(tgMode);
         rbClassic.setSelected(true);
@@ -221,7 +217,10 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         GridPane gp = new GridPane();
         gp.setHgap(8); gp.setVgap(6); gp.setPadding(new Insets(12));
         int r = 0;
-        gp.addRow(r++, new Label("Mode d'envoi :"), rbClassic, rbOauth2, bHelp);
+        gp.addRow(r++, new Label("Mode d'envoi :"),
+                  rbClassic, rbOauth2,
+                  bHelp,          // aide OAuth2 existante
+                  bSmtpHelp);     // nouvelle aide SMTP
         gp.addRow(r++, new Label("Fournisseur :"), cbProv);
         gp.addRow(r++, new Label("Client OAuth :"), tfClient);
         gp.addRow(r++, new Label("Adresse Gmail :"), tfGmail);
