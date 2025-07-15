@@ -5,8 +5,12 @@ import javafx.scene.Scene;
 import javafx.stage.Stage;
 import org.example.dao.DB;
 import org.example.dao.MailPrefsDAO;
+import org.example.dao.AuthDB;
+import org.example.dao.UserDB;
 import org.example.gui.MainView;
 import org.example.gui.ThemeManager;
+import org.example.gui.LoginDialog;
+import org.example.security.AuthService;
 import javafx.application.Platform;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
@@ -18,6 +22,7 @@ import org.example.mail.MailPrefs;
 import org.example.model.Prestataire;
 
 import java.time.LocalDateTime;
+import java.nio.file.Path;
 import java.util.Map;
 
 import java.util.concurrent.*;
@@ -35,7 +40,24 @@ public class MainApp extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        dao = new DB(DB_FILE);
+        try (AuthDB authDB = new AuthDB("auth.db")) {
+            AuthService auth = new AuthService(authDB);
+            LoginDialog dlg = new LoginDialog(auth);
+            dlg.showAndWait().ifPresent(sess -> {
+                try {
+                    Path db = Path.of(System.getProperty("user.home"), ".prestataires",
+                                      sess.username() + ".db");
+                    try (UserDB udb = new UserDB(db.toString(), sess.key())) {
+                        DB dao = new DB(udb.connection());
+                        launchUI(primaryStage, dao);        // extrait votre code existant
+                    }
+                } catch (Exception e) { e.printStackTrace(); }
+            });
+        } catch (Exception e) { e.printStackTrace(); }
+    }
+
+    private void launchUI(Stage primaryStage, DB dao) {
+        this.dao = dao;
         mailPrefsDao = new MailPrefsDAO(dao);
         view = new MainView(primaryStage, dao, mailPrefsDao);
         primaryStage.setTitle("Gestion des Prestataires");
