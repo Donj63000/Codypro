@@ -2,6 +2,8 @@ package org.example.mail;
 
 import org.example.dao.MailPrefsDAO;
 import org.example.dao.DB;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.*;
 
 import java.lang.reflect.Field;
@@ -23,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class MicrosoftAuthServiceTest {
     private String url;
     private MailPrefsDAO dao;
+    private SecretKey key;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -51,7 +54,8 @@ public class MicrosoftAuthServiceTest {
                 )
             """);
         }
-        dao = new MailPrefsDAO(() -> DB.newConnection(url));
+        key = new SecretKeySpec(new byte[16], "AES");
+        dao = new MailPrefsDAO(() -> DB.newConnection(url), key);
         MailPrefs prefs = new MailPrefs(
                 "smtp.office365.com", 587, false,
                 "user", "pwd",

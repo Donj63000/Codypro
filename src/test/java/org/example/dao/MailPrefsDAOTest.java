@@ -5,12 +5,15 @@ import org.example.mail.SmtpPreset;
 import org.junit.jupiter.api.*;
 
 import java.sql.*;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public class MailPrefsDAOTest {
     private String url;
     private MailPrefsDAO dao;
+    private SecretKey key;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -39,7 +42,8 @@ public class MailPrefsDAOTest {
                 )
             """);
         }
-        dao = new MailPrefsDAO(() -> DB.newConnection(url));
+        key = new SecretKeySpec(new byte[16], "AES");
+        dao = new MailPrefsDAO(() -> DB.newConnection(url), key);
     }
 
 

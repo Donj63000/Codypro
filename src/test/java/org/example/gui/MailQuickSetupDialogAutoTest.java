@@ -7,6 +7,8 @@ import org.example.dao.DB;
 import org.example.mail.MailPrefs;
 import org.example.mail.autodetect.AutoConfigProvider;
 import org.example.mail.autodetect.AutoConfigResult;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.*;
 
 import java.sql.Connection;
@@ -19,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class MailQuickSetupDialogAutoTest {
     private String url;
     private MailPrefsDAO dao;
+    private SecretKey key;
 
     @BeforeAll
     static void initJfx() { new JFXPanel(); }
@@ -53,7 +56,8 @@ public class MailQuickSetupDialogAutoTest {
                 )
             """);
         }
-        dao = new MailPrefsDAO(() -> DB.newConnection(url));
+        key = new SecretKeySpec(new byte[16], "AES");
+        dao = new MailPrefsDAO(() -> DB.newConnection(url), key);
     }
 
 

@@ -2,6 +2,7 @@ package org.example.mail;
 
 import java.sql.*;
 import java.util.Map;
+import javax.crypto.SecretKey;
 import org.example.util.TokenCrypto;
 
 public record MailPrefs(
@@ -85,15 +86,15 @@ public record MailPrefs(
         );
     }
 
-    public static MailPrefs fromRS(ResultSet rs) throws SQLException {
+    public static MailPrefs fromRS(ResultSet rs, SecretKey key) throws SQLException {
         String provider = rs.getString("provider");
         if(provider == null) provider = "";
         String oauthClient = rs.getString("oauth_client");
         if (oauthClient == null) oauthClient = "";
-        else oauthClient = TokenCrypto.decrypt(oauthClient);
+        else oauthClient = TokenCrypto.decrypt(oauthClient, key);
         String oauthRefresh = rs.getString("oauth_refresh");
         if (oauthRefresh == null) oauthRefresh = "";
-        else oauthRefresh = TokenCrypto.decrypt(oauthRefresh);
+        else oauthRefresh = TokenCrypto.decrypt(oauthRefresh, key);
         long expiry = 0L;
         try {
             expiry = rs.getLong("oauth_expiry");
@@ -124,15 +125,15 @@ public record MailPrefs(
         );
     }
 
-    public void bind(PreparedStatement ps) throws SQLException {
+    public void bind(PreparedStatement ps, SecretKey key) throws SQLException {
         ps.setString(1, host());
         ps.setInt(2, port());
         ps.setInt(3, ssl() ? 1 : 0);
         ps.setString(4, user());
         ps.setString(5, pwd());
         ps.setString(6, provider());
-        ps.setString(7, TokenCrypto.encrypt(oauthClient()));
-        ps.setString(8, TokenCrypto.encrypt(oauthRefresh()));
+        ps.setString(7, TokenCrypto.encrypt(oauthClient(), key));
+        ps.setString(8, TokenCrypto.encrypt(oauthRefresh(), key));
         ps.setLong(9, oauthExpiry());
         ps.setString(10, from());
         ps.setString(11, copyToSelf() == null ? "" : copyToSelf());
