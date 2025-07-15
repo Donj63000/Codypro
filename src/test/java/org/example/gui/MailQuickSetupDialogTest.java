@@ -7,6 +7,8 @@ import org.example.dao.MailPrefsDAO;
 import org.example.dao.DB;
 import org.example.mail.MailPrefs;
 import org.junit.jupiter.api.*;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 
 import java.sql.Connection;
 import java.sql.Statement;
@@ -18,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class MailQuickSetupDialogTest {
     private String url;
     private MailPrefsDAO dao;
+    private SecretKey key;
 
     @BeforeAll
     static void initJfx() {
@@ -54,7 +57,8 @@ public class MailQuickSetupDialogTest {
                 )
             """);
         }
-        dao = new MailPrefsDAO(() -> DB.newConnection(url));
+        key = new SecretKeySpec(new byte[16], "AES");
+        dao = new MailPrefsDAO(() -> DB.newConnection(url), key);
     }
 
     @Test

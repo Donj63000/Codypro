@@ -49,16 +49,16 @@ public class MainApp extends Application {
                                       sess.username() + ".db");
                     try (UserDB udb = new UserDB(db.toString(), sess.key())) {
                         DB dao = new DB(udb.connection());
-                        launchUI(primaryStage, dao);        // extrait votre code existant
+                        launchUI(primaryStage, dao, sess.key());        // extrait votre code existant
                     }
                 } catch (Exception e) { e.printStackTrace(); }
             });
         } catch (Exception e) { e.printStackTrace(); }
     }
 
-    private void launchUI(Stage primaryStage, DB dao) {
+    private void launchUI(Stage primaryStage, DB dao, javax.crypto.SecretKey key) {
         this.dao = dao;
-        mailPrefsDao = new MailPrefsDAO(dao);
+        mailPrefsDao = new MailPrefsDAO(dao, key);
         view = new MainView(primaryStage, dao, mailPrefsDao);
         primaryStage.setTitle("Gestion des Prestataires");
         Scene sc = new Scene(view.getRoot(), 920, 600);

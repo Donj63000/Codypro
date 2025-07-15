@@ -2,18 +2,23 @@ package org.example.dao;
 
 import org.example.mail.MailPrefs;
 import org.example.mail.SmtpPreset;
+import javax.crypto.SecretKey;
 
 import java.sql.*;
 
 public class MailPrefsDAO {
     private final ConnectionProvider ds;
-    public MailPrefsDAO(ConnectionProvider ds){ this.ds = ds; }
+    private final SecretKey key;
+    public MailPrefsDAO(ConnectionProvider ds, SecretKey key){
+        this.ds = ds;
+        this.key = key;
+    }
 
     public MailPrefs load(){
         try (Connection c = ds.getConnection(); Statement st = c.createStatement()){
             ResultSet rs = st.executeQuery("SELECT * FROM mail_prefs WHERE id=1");
             if(!rs.next()) return MailPrefs.fromPreset(SmtpPreset.PRESETS[0]);
-            return MailPrefs.fromRS(rs);
+            return MailPrefs.fromRS(rs, key);
         } catch(SQLException e){ throw new RuntimeException(e);}    }
     public void save(MailPrefs p){
         String sql = """
@@ -32,7 +37,7 @@ public class MailPrefsDAO {
               subj_tpl_self=excluded.subj_tpl_self,body_tpl_self=excluded.body_tpl_self
         """;
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)){
-            p.bind(ps);
+            p.bind(ps, key);
             ps.executeUpdate();
         }catch(SQLException e){ throw new RuntimeException(e);}    }
 

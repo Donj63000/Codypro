@@ -64,8 +64,8 @@ public class MainView {
      * Convenience constructor used by older code or tests that don't
      * explicitly provide a {@link MailPrefsDAO} instance.
      */
-    public MainView(Stage stage, DB dao) {
-        this(stage, dao, new MailPrefsDAO(dao));
+    public MainView(Stage stage, DB dao, javax.crypto.SecretKey key) {
+        this(stage, dao, new MailPrefsDAO(dao, key));
     }
 
     public Parent getRoot() {
