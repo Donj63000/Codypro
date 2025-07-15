@@ -9,6 +9,7 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import org.example.gui.MailOAuthHelpDialog;
+import org.example.gui.SmtpHelpDialog;
 import org.example.dao.MailPrefsDAO;
 import org.example.mail.GoogleAuthService;
 import org.example.mail.MailPrefs;
@@ -72,7 +73,13 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         RadioButton rbClassic = new RadioButton("SMTP classique");
         RadioButton rbOauth2 = new RadioButton("Gmail OAuth2");
         Button bHelp = new Button("Aide");
-        bHelp.setOnAction(ev -> new MailOAuthHelpDialog().showAndWait());
+        bHelp.setOnAction(ev -> {
+            if (rbOauth2.isSelected()) {
+                new MailOAuthHelpDialog().showAndWait();
+            } else {
+                new SmtpHelpDialog().showAndWait();
+            }
+        });
         rbClassic.setToggleGroup(tgMode);
         rbOauth2.setToggleGroup(tgMode);
         rbClassic.setSelected(true);
