@@ -92,8 +92,7 @@ public final class AuthService {
 
         /* 4) maj table users */
         try (PreparedStatement ps = store.c().prepareStatement("""
-               UPDATE users SET pwd_hash=?,kdf_salt=?,kdf_iters=?
-               WHERE id=?""")) {
+               UPDATE users SET pwd_hash=?,kdf_salt=?,kdf_iters=? WHERE id=?""")) {
             ps.setString(1, newHash);
             ps.setBytes (2, newSalt);
             ps.setInt   (3, newIter);
