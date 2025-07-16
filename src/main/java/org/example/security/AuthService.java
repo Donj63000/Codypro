@@ -8,6 +8,7 @@ import java.sql.*;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.nio.file.Path;
+import java.util.HexFormat;
 
 public final class AuthService {
     private final AuthDB store;
@@ -85,8 +86,7 @@ public final class AuthService {
                               sess.username() + ".db");
         try (UserDB udb = new UserDB(dbFile.toString(), sess.key())) {
             Statement st = udb.connection().createStatement();
-            String hex = javax.xml.bind.DatatypeConverter
-                    .printHexBinary(newKey.getEncoded());
+            String hex = HexFormat.of().formatHex(newKey.getEncoded());
             st.execute("PRAGMA rekey = '" + hex + "'");
         }
 
