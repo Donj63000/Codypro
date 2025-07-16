@@ -18,9 +18,21 @@ Elle stocke les informations dans une base SQLite locale et propose une interfac
 ## Version de sqlite-jdbc requise
 
 La méthode `setFullSync(boolean)` nécessite la bibliothèque
-`sqlite-jdbc` en version **3.39.4.0** ou supérieure. Assurez-vous qu'aucun
-autre module n'impose une version plus ancienne. Pour vérifier la
-version effectivement utilisée et détecter d'éventuels conflits, lancez :
+`sqlite-jdbc` en version **3.44.0.0** ou supérieure. Depuis cette
+version, la variante « crypt » est incluse directement dans
+`sqlite-jdbc`. Ajoutez la dépendance suivante dans votre `pom.xml` :
+
+```xml
+<dependency>
+    <groupId>io.github.willena</groupId>
+    <artifactId>sqlite-jdbc</artifactId>
+    <version>3.50.1.0</version>
+</dependency>
+```
+
+Assurez-vous qu'aucun autre module n'impose une version plus ancienne.
+Pour vérifier la version effectivement utilisée et détecter d'éventuels
+conflits, lancez :
 
 ```bash
 mvn -q dependency:tree -Dincludes=org.xerial:sqlite-jdbc
