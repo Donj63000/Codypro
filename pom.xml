@@ -54,6 +54,13 @@
         </dependencies>
     </dependencyManagement>
 
+    <repositories>
+        <repository>
+            <id>sqlite-jdbc-crypt</id>
+            <url>https://dl.cloudsmith.io/public/willena/sqlite-jdbc-crypt/maven/</url>
+        </repository>
+    </repositories>
+
     <!-- ========================================================= -->
     <!--                       Dépendances                         -->
     <!-- ========================================================= -->
