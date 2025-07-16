@@ -42,24 +42,9 @@
                 <scope>import</scope>
             </dependency>
 
-            <!-- BOM sqlite‑jdbc‑crypt : fixe de façon centrale
-                 la version des modules natifs                   -->
-            <dependency>
-                <groupId>io.github.willena</groupId>
-                <artifactId>sqlite-jdbc-crypt</artifactId>
-                <version>3.45.2.0</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
         </dependencies>
     </dependencyManagement>
 
-    <repositories>
-        <repository>
-            <id>sqlite-jdbc-crypt</id>
-            <url>https://dl.cloudsmith.io/public/willena/sqlite-jdbc-crypt/maven/</url>
-        </repository>
-    </repositories>
 
     <!-- ========================================================= -->
     <!--                       Dépendances                         -->
