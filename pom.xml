@@ -114,14 +114,14 @@
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
             <version>3.45.2.0</version>
+            <scope>provided</scope>
         </dependency>
 
-        <!-- SQLite JDBC crypt : JAR universel incluant toutes les natives -->
+        <!-- SQLite JDBC avec support du chiffrement -->
         <dependency>
             <groupId>io.github.willena</groupId>
-            <artifactId>sqlite-jdbc-crypt</artifactId>
-            <version>3.45.2.0</version>
-            <classifier>all</classifier>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.50.1.0</version>
         </dependency>
 
         <!-- Pool JDBC -->
