@@ -25,6 +25,7 @@ import jakarta.mail.MessagingException;
 import com.google.api.client.auth.oauth2.TokenResponseException;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -62,6 +63,8 @@ public class MainApp extends Application {
                             ".prestataires",
                             sess.username() + ".db");
 
+                    Files.createDirectories(dbPath.getParent());
+
                     /* --------- ouverture SQLCipher + DAO -------------- */
                     userDb = new UserDB(dbPath.toString(), sess.key());
                     dao    = new DB(userDb::connection);   // <-- CORRECTION
@@ -69,6 +72,11 @@ public class MainApp extends Application {
 
                 } catch (Exception e) {
                     e.printStackTrace();
+                    Alert a = new Alert(Alert.AlertType.ERROR,
+                                        "Impossible d’ouvrir la base utilisateur :\n" + e.getMessage(),
+                                        ButtonType.OK);
+                    ThemeManager.apply(a);
+                    a.showAndWait();
                 }
             });
 
