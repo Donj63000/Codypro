@@ -119,8 +119,9 @@
         <!-- SQLite JDBC crypt : JAR universel incluant toutes les natives -->
         <dependency>
             <groupId>io.github.willena</groupId>
-            <artifactId>sqlite-jdbc-crypt-all</artifactId>
+            <artifactId>sqlite-jdbc-crypt</artifactId>
             <version>3.45.2.0</version>
+            <classifier>all</classifier>
         </dependency>
 
         <!-- Pool JDBC -->
