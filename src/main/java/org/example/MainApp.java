@@ -12,6 +12,7 @@ import org.example.dao.DB;
 import org.example.dao.MailPrefsDAO;
 import org.example.dao.UserDB;
 import org.example.gui.LoginDialog;
+import org.example.gui.RegisterDialog;
 import org.example.gui.MainView;
 import org.example.gui.ThemeManager;
 import org.example.mail.Mailer;
@@ -27,6 +28,7 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.sql.*;
 
 public class MainApp extends Application {
 
@@ -43,6 +45,15 @@ public class MainApp extends Application {
         try (AuthDB authDB = new AuthDB("auth.db")) {
 
             AuthService auth = new AuthService(authDB);
+
+            try (Statement st = authDB.c().createStatement();
+                 ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM users")) {
+                if (rs.next() && rs.getInt(1) == 0) {
+                    RegisterDialog reg = new RegisterDialog(auth);
+                    reg.showAndWait();
+                }
+            }
+
             LoginDialog dlg = new LoginDialog(auth);
 
             dlg.showAndWait().ifPresent(sess -> {
