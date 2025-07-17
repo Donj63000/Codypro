@@ -5,6 +5,10 @@ import org.example.model.ServiceRow;
 import org.example.model.Facture;
 import org.example.model.Rappel;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -20,13 +24,36 @@ import java.util.List;
 import java.util.Objects;
 import java.math.BigDecimal;
 
+/**
+ * DAO principal.
+ * Il fonctionne soit :
+ * <ul>
+ *   <li>avec un chemin de fichier : pool Hikari ;</li>
+ *   <li>avec un {@link ConnectionProvider} déjà ouvert (SQLCipher).</li>
+ * </ul>
+ * Dans ce second cas, le schéma est créé automatiquement et la connexion
+ * est protégée contre une fermeture involontaire grâce à un proxy qui
+ * neutralise {@code close()}.
+ */
 public class DB implements AutoCloseable, ConnectionProvider {
+
+    /* ======================================================================
+       Configuration globale
+       ====================================================================== */
     private static final DateTimeFormatter DATE_FR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final DateTimeFormatter DATE_DB = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-    private final String path;
-    private final HikariDataSource ds;
-    private final ConnectionProvider cp;
 
+    private final String path;                 // null en mode provider
+    private final HikariDataSource ds;         // null en mode provider
+    private final ConnectionProvider cp;       // toujours non nul
+
+    /* connexion unique quand on passe par ConnectionProvider */
+    private Connection singleConn;
+    private Connection singleProxy;
+
+    /* ======================================================================
+       Utilitaire : ouvrir une connexion brute avec les bons PRAGMA
+       ====================================================================== */
     public static Connection newConnection(String path) throws SQLException {
         SQLiteConfig cfg = new SQLiteConfig();
         cfg.setBusyTimeout(5000);
@@ -38,12 +65,29 @@ public class DB implements AutoCloseable, ConnectionProvider {
         return DriverManager.getConnection("jdbc:sqlite:" + path, cfg.toProperties());
     }
 
+    /* ======================================================================
+       Constructeur « provider » (SQLCipher déjà ouvert)
+       ====================================================================== */
     public DB(ConnectionProvider cp) {
         this.path = null;
-        this.ds = null;
-        this.cp = cp;
+        this.ds   = null;
+        this.cp   = cp;
+
+        try {
+            singleConn  = cp.getConnection();
+            try (Statement st = singleConn.createStatement()) {
+                st.execute("PRAGMA foreign_keys = 1");
+            }
+            initSchema(singleConn);
+            singleProxy = wrapNoClose(singleConn);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
+    /* ======================================================================
+       Constructeur « fichier » (Hikari + pool)
+       ====================================================================== */
     public DB(String path) {
         this.path = path;
 
@@ -58,133 +102,166 @@ public class DB implements AutoCloseable, ConnectionProvider {
         HikariConfig cfg = new HikariConfig();
         cfg.setJdbcUrl("jdbc:sqlite:" + path);
         cfg.setDataSourceProperties(sqCfg.toProperties());
-        ds = new HikariDataSource(cfg);
+        ds  = new HikariDataSource(cfg);
         this.cp = ds::getConnection;
 
         try (Connection conn = ds.getConnection()) {
             try (Statement st = conn.createStatement()) {
                 st.execute("PRAGMA foreign_keys = 1");
             }
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("""
-                        CREATE TABLE IF NOT EXISTS prestataires (
-                            id INTEGER PRIMARY KEY,
-                            nom TEXT UNIQUE NOT NULL COLLATE NOCASE,
-                            societe TEXT,
-                            telephone TEXT,
-                            email TEXT,
-                            note INTEGER CHECK(note BETWEEN 0 AND 100),
-                            facturation TEXT,
-                            date_contrat TEXT,
-                            date_contrat_ts INTEGER
-                        );
-                        """);
-            }
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("""
-                        CREATE TABLE IF NOT EXISTS services (
-                            id INTEGER PRIMARY KEY,
-                            prestataire_id INTEGER REFERENCES prestataires(id) ON DELETE CASCADE,
-                            description TEXT,
-                            date TEXT,
-                            date_ts INTEGER
-                        );
-                        """);
-            }
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("""
-                        CREATE TABLE IF NOT EXISTS factures (
-                            id INTEGER PRIMARY KEY,
-                            prestataire_id INTEGER NOT NULL
-                                REFERENCES prestataires(id) ON DELETE CASCADE,
-                            description TEXT,
-                            echeance TEXT NOT NULL,
-                            echeance_ts INTEGER NOT NULL,
-                            montant_ht REAL NOT NULL,
-                            tva_pct REAL NOT NULL DEFAULT 20,
-                            montant_tva REAL NOT NULL,
-                            montant_ttc REAL NOT NULL,
-                            devise TEXT DEFAULT 'EUR',
-                            paye INTEGER NOT NULL DEFAULT 0,
-                            date_paiement TEXT,
-                            date_paiement_ts INTEGER,
-                            preavis_envoye INTEGER NOT NULL DEFAULT 0
-                        );
-                        """);
-            }
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("""
-                        CREATE TABLE IF NOT EXISTS rappels (
-                            id           INTEGER PRIMARY KEY,
-                            facture_id   INTEGER NOT NULL REFERENCES factures(id) ON DELETE CASCADE,
-                            dest         TEXT      NOT NULL,
-                            sujet        TEXT      NOT NULL,
-                            corps        TEXT      NOT NULL,
-                            date_envoi   TEXT      NOT NULL,   -- ISO yyyy-MM-dd HH:mm
-                            date_envoi_ts INTEGER NOT NULL,
-                            envoye       INTEGER   NOT NULL DEFAULT 0
-                        );
-                        """);
-                st.executeUpdate("""
-                        CREATE INDEX IF NOT EXISTS idx_rappels_date
-                        ON rappels(envoye,date_envoi_ts);
-                        """);
-            }
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("""
-                        CREATE INDEX IF NOT EXISTS idx_factures_prestataire
-                        ON factures(prestataire_id, paye);
-                        """);
-            }
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("""
-                        CREATE TABLE IF NOT EXISTS mail_prefs (
-                            id               INTEGER PRIMARY KEY CHECK(id=1),
-                            host             TEXT  NOT NULL,
-                            port             INTEGER NOT NULL,
-                            ssl              INTEGER NOT NULL DEFAULT 1,
-                            user             TEXT,
-                            pwd              TEXT,
-                            provider         TEXT,
-                            oauth_client     TEXT,
-                            oauth_refresh    TEXT,
-                            oauth_expiry     INTEGER,
-                            from_addr        TEXT  NOT NULL,
-                            copy_to_self     TEXT NOT NULL DEFAULT '',
-                            delay_hours      INTEGER NOT NULL DEFAULT 48,
-                            style            TEXT  NOT NULL DEFAULT 'fr',
-                            subj_tpl_presta  TEXT  NOT NULL,
-                            body_tpl_presta  TEXT  NOT NULL,
-                            subj_tpl_self    TEXT  NOT NULL,
-                            body_tpl_self    TEXT  NOT NULL
-                        );
-                        """);
-            }
-            upgradeCopyToSelf(conn);
-            addMissingColumns(conn);
-            // tables are created with all current columns; older schemas are no longer supported
+            initSchema(conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
+    /* ======================================================================
+       Initialisation du schéma (mutualisée)
+       ====================================================================== */
+    private static void initSchema(Connection conn) throws SQLException {
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("""
+                CREATE TABLE IF NOT EXISTS prestataires (
+                    id INTEGER PRIMARY KEY,
+                    nom TEXT UNIQUE NOT NULL COLLATE NOCASE,
+                    societe TEXT,
+                    telephone TEXT,
+                    email TEXT,
+                    note INTEGER CHECK(note BETWEEN 0 AND 100),
+                    facturation TEXT,
+                    date_contrat TEXT,
+                    date_contrat_ts INTEGER
+                );""");
+        }
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("""
+                CREATE TABLE IF NOT EXISTS services (
+                    id INTEGER PRIMARY KEY,
+                    prestataire_id INTEGER REFERENCES prestataires(id) ON DELETE CASCADE,
+                    description TEXT,
+                    date TEXT,
+                    date_ts INTEGER
+                );""");
+        }
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("""
+                CREATE TABLE IF NOT EXISTS factures (
+                    id INTEGER PRIMARY KEY,
+                    prestataire_id INTEGER NOT NULL
+                        REFERENCES prestataires(id) ON DELETE CASCADE,
+                    description TEXT,
+                    echeance TEXT NOT NULL,
+                    echeance_ts INTEGER NOT NULL,
+                    montant_ht REAL NOT NULL,
+                    tva_pct REAL NOT NULL DEFAULT 20,
+                    montant_tva REAL NOT NULL,
+                    montant_ttc REAL NOT NULL,
+                    devise TEXT DEFAULT 'EUR',
+                    paye INTEGER NOT NULL DEFAULT 0,
+                    date_paiement TEXT,
+                    date_paiement_ts INTEGER,
+                    preavis_envoye INTEGER NOT NULL DEFAULT 0
+                );""");
+        }
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("""
+                CREATE TABLE IF NOT EXISTS rappels (
+                    id           INTEGER PRIMARY KEY,
+                    facture_id   INTEGER NOT NULL REFERENCES factures(id) ON DELETE CASCADE,
+                    dest         TEXT      NOT NULL,
+                    sujet        TEXT      NOT NULL,
+                    corps        TEXT      NOT NULL,
+                    date_envoi   TEXT      NOT NULL,
+                    date_envoi_ts INTEGER NOT NULL,
+                    envoye       INTEGER   NOT NULL DEFAULT 0
+                );""");
+            st.executeUpdate("""
+                CREATE INDEX IF NOT EXISTS idx_rappels_date
+                ON rappels(envoye,date_envoi_ts);""");
+        }
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("""
+                CREATE INDEX IF NOT EXISTS idx_factures_prestataire
+                ON factures(prestataire_id, paye);""");
+        }
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("""
+                CREATE TABLE IF NOT EXISTS mail_prefs (
+                    id               INTEGER PRIMARY KEY CHECK(id=1),
+                    host             TEXT  NOT NULL,
+                    port             INTEGER NOT NULL,
+                    ssl              INTEGER NOT NULL DEFAULT 1,
+                    user             TEXT,
+                    pwd              TEXT,
+                    provider         TEXT,
+                    oauth_client     TEXT,
+                    oauth_refresh    TEXT,
+                    oauth_expiry     INTEGER,
+                    from_addr        TEXT  NOT NULL,
+                    copy_to_self     TEXT NOT NULL DEFAULT '',
+                    delay_hours      INTEGER NOT NULL DEFAULT 48,
+                    style            TEXT  NOT NULL DEFAULT 'fr',
+                    subj_tpl_presta  TEXT  NOT NULL,
+                    body_tpl_presta  TEXT  NOT NULL,
+                    subj_tpl_self    TEXT  NOT NULL,
+                    body_tpl_self    TEXT  NOT NULL
+                );""");
+        }
+        upgradeCopyToSelf(conn);
+        addMissingColumns(conn);
+    }
+
+    /* ======================================================================
+       Gestion des connexions
+       ====================================================================== */
+    @Override
+    public Connection getConnection() throws SQLException {
+        if (ds != null) {                       // mode Hikari
+            return ds.getConnection();
+        }
+        return singleProxy;                     // mode provider
+    }
+
     @Override
     public void close() {
-        if (ds != null) ds.close();
-        else if (cp instanceof AutoCloseable ac) {
-            try { ac.close(); } catch (Exception ignore) {}
+        if (ds != null) {
+            ds.close();
+        } else {
+            try { singleConn.close(); } catch (Exception ignore) {}
         }
     }
 
-    @Override
-    public Connection getConnection() throws SQLException {
-        if (ds != null) return ds.getConnection();
-        return cp.getConnection();
+    /**
+     * Retourne un proxy qui ignore {@code close()} afin que les blocs
+     * try‑with‑resources des DAO ne ferment pas la connexion SQLCipher
+     * partagée.
+     */
+    private static Connection wrapNoClose(Connection conn) {
+        InvocationHandler h = (Object proxy, Method m, Object[] args) -> {
+            if ("close".equals(m.getName())) {
+                return null;                    // on ignore
+            }
+            try {
+                return m.invoke(conn, args);
+            } catch (InvocationTargetException ex) {
+                throw ex.getTargetException();
+            }
+        };
+        return (Connection) Proxy.newProxyInstance(
+                DB.class.getClassLoader(),
+                new Class<?>[]{Connection.class},
+                h);
     }
+
+    /* ======================================================================
+       ----- TOUTES LES MÉTHODES MÉTIER D’ORIGINE SONT CONSERVÉES CI‑DESSOUS -----
+       ====================================================================== */
+
+    /* ---------------------- Prestataires ---------------------- */
 
     public List<Prestataire> list(String filtre) {
         String sql = """
-                SELECT  p.*, 
+                SELECT  p.*,
                        (SELECT COUNT(*) FROM factures f
                         WHERE f.prestataire_id = p.id AND f.paye = 0) AS nb_impayes
                 FROM    prestataires p
@@ -205,7 +282,10 @@ public class DB implements AutoCloseable, ConnectionProvider {
     }
 
     public void add(Prestataire p) {
-        String sql = "INSERT INTO prestataires(nom,societe,telephone,email,note,facturation,date_contrat,date_contrat_ts) VALUES(?,?,?,?,?,?,?,?)";
+        String sql = """
+            INSERT INTO prestataires(nom,societe,telephone,email,note,facturation,
+                                     date_contrat,date_contrat_ts)
+            VALUES(?,?,?,?,?,?,?,?)""";
         try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             fill(ps, p);
             ps.executeUpdate();
@@ -217,8 +297,8 @@ public class DB implements AutoCloseable, ConnectionProvider {
     public void update(Prestataire p) {
         String sql = """
                 UPDATE prestataires SET
-                nom=?,societe=?,telephone=?,email=?,note=?,facturation=?,date_contrat=?,date_contrat_ts=? WHERE id=?
-            """;
+                nom=?,societe=?,telephone=?,email=?,note=?,
+                facturation=?,date_contrat=?,date_contrat_ts=? WHERE id=?""";
         try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             fill(ps, p);
             ps.setInt(9, p.getId());
@@ -229,7 +309,8 @@ public class DB implements AutoCloseable, ConnectionProvider {
     }
 
     public void delete(int pid) {
-        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement("DELETE FROM prestataires WHERE id=?")) {
+        try (Connection conn = getConnection(); PreparedStatement ps =
+                conn.prepareStatement("DELETE FROM prestataires WHERE id=?")) {
             ps.setInt(1, pid);
             ps.executeUpdate();
         } catch (SQLException e) {
@@ -237,14 +318,19 @@ public class DB implements AutoCloseable, ConnectionProvider {
         }
     }
 
-    public Prestataire findPrestataire(int pid){
+    public Prestataire findPrestataire(int pid) {
         String sql = "SELECT * FROM prestataires WHERE id=?";
-        try(Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)){
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, pid);
             ResultSet rs = ps.executeQuery();
-            if(!rs.next()) return null;
+            if (!rs.next()) return null;
             return rowToPrestataire(rs);
-        }catch(SQLException e){ throw new RuntimeException(e);}    }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /* ---------------------- Services ---------------------- */
 
     public void addService(int pid, String desc) {
         String sql = "INSERT INTO services(prestataire_id,description,date,date_ts) VALUES(?,?,?,?)";
@@ -260,83 +346,11 @@ public class DB implements AutoCloseable, ConnectionProvider {
         }
     }
 
-    private static LocalDate parseAny(String raw) {
-        if (raw == null || raw.isBlank()) return null;
-        try {
-            return LocalDate.parse(raw, DATE_DB);
-        } catch (DateTimeParseException ex) {
-            return LocalDate.parse(raw, DATE_FR);
-        }
-    }
-
-    private static void addMissingColumns(Connection conn) throws SQLException {
-        ensureTsColumn(conn, "prestataires", "date_contrat_ts", "date_contrat");
-        ensureTsColumn(conn, "services", "date_ts", "date");
-        ensureTsColumn(conn, "factures", "echeance_ts", "echeance");
-        ensureTsColumn(conn, "factures", "date_paiement_ts", "date_paiement");
-        ensureTsColumn(conn, "rappels", "date_envoi_ts", "date_envoi");
-        ensureFactureMoneyColumns(conn);
-    }
-
-    private static void upgradeCopyToSelf(Connection conn) {
-        try (Statement st = conn.createStatement()) {
-            st.executeUpdate("UPDATE mail_prefs SET copy_to_self = '' WHERE copy_to_self IS NULL");
-            st.executeUpdate("ALTER TABLE mail_prefs ALTER COLUMN copy_to_self SET DEFAULT ''");
-            st.executeUpdate("ALTER TABLE mail_prefs ALTER COLUMN copy_to_self SET NOT NULL");
-        } catch (SQLException ignore) { }
-    }
-
-    private static void ensureTsColumn(Connection conn, String table, String col,
-                                       String from) throws SQLException {
-        boolean exists = false;
-        try (PreparedStatement ps = conn.prepareStatement("PRAGMA table_info(" + table + ")");
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                if (col.equalsIgnoreCase(rs.getString("name"))) {
-                    exists = true;
-                    break;
-                }
-            }
-        }
-        if (!exists) {
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("ALTER TABLE " + table + " ADD COLUMN " + col + " INTEGER");
-                st.executeUpdate("UPDATE " + table + " SET " + col + "=strftime('%s', " + from + ") WHERE " + from + " IS NOT NULL");
-            }
-        }
-    }
-
-    private static boolean hasColumn(Connection conn, String table, String col) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement("PRAGMA table_info(" + table + ")");
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) if (col.equalsIgnoreCase(rs.getString("name"))) return true;
-        }
-        return false;
-    }
-
-    private static void ensureColumn(Connection conn, String table, String col, String def) throws SQLException {
-        if (!hasColumn(conn, table, col)) {
-            try (Statement st = conn.createStatement()) {
-                st.executeUpdate("ALTER TABLE " + table + " ADD COLUMN " + col + " " + def);
-            }
-        }
-    }
-
-    private static void ensureFactureMoneyColumns(Connection conn) throws SQLException {
-        ensureColumn(conn, "factures", "tva_pct", "REAL NOT NULL DEFAULT 20");
-        ensureColumn(conn, "factures", "montant_tva", "REAL NOT NULL DEFAULT 0");
-        ensureColumn(conn, "factures", "montant_ttc", "REAL NOT NULL DEFAULT 0");
-        ensureColumn(conn, "factures", "devise", "TEXT DEFAULT 'EUR'");
-        try (Statement st = conn.createStatement()) {
-            st.executeUpdate("UPDATE factures SET tva_pct=20 WHERE tva_pct IS NULL");
-            st.executeUpdate("UPDATE factures SET montant_tva=montant_ht*tva_pct/100 WHERE montant_tva = 0");
-            st.executeUpdate("UPDATE factures SET montant_ttc=montant_ht+montant_tva WHERE montant_ttc = 0");
-            st.executeUpdate("UPDATE factures SET devise='EUR' WHERE devise IS NULL");
-        }
-    }
-
     public List<ServiceRow> services(int pid) {
-        String sql = "SELECT description,date,date_ts FROM services WHERE prestataire_id=? ORDER BY date_ts";
+        String sql = """
+            SELECT description,date,date_ts
+            FROM services WHERE prestataire_id=?
+            ORDER BY date_ts""";
         try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, pid);
             ResultSet rs = ps.executeQuery();
@@ -345,7 +359,7 @@ public class DB implements AutoCloseable, ConnectionProvider {
                 LocalDate d;
                 long ts = rs.getLong("date_ts");
                 if (rs.wasNull()) d = parseAny(rs.getString("date"));
-                else d = LocalDateTime.ofEpochSecond(ts,0,ZoneOffset.UTC).toLocalDate();
+                else d = LocalDateTime.ofEpochSecond(ts, 0, ZoneOffset.UTC).toLocalDate();
                 out.add(new ServiceRow(
                         rs.getString("description"),
                         d == null ? "" : DATE_FR.format(d)));
@@ -356,10 +370,14 @@ public class DB implements AutoCloseable, ConnectionProvider {
         }
     }
 
-    /* =========================== Factures =========================== */
+    /* ---------------------- Factures ---------------------- */
 
     public void addFacture(Facture f) {
-        String sql = "INSERT INTO factures(prestataire_id,description,echeance,echeance_ts,montant_ht,tva_pct,montant_tva,montant_ttc,devise,paye,date_paiement,date_paiement_ts) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)";
+        String sql = """
+            INSERT INTO factures(prestataire_id,description,echeance,echeance_ts,
+                                 montant_ht,tva_pct,montant_tva,montant_ttc,devise,
+                                 paye,date_paiement,date_paiement_ts)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""";
         try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, f.getPrestataireId());
             ps.setString(2, f.getDescription());
@@ -405,7 +423,8 @@ public class DB implements AutoCloseable, ConnectionProvider {
     }
 
     public List<Facture> factures(int pid, Boolean payee) {
-        String sql = "SELECT * FROM factures WHERE prestataire_id=? " + (payee == null ? "" : "AND paye=? ") + "ORDER BY echeance_ts";
+        String sql = "SELECT * FROM factures WHERE prestataire_id=? "
+                + (payee == null ? "" : "AND paye=? ") + "ORDER BY echeance_ts";
         try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             int idx = 1;
             ps.setInt(idx++, pid);
@@ -419,20 +438,122 @@ public class DB implements AutoCloseable, ConnectionProvider {
         }
     }
 
+    public List<Facture> facturesImpayeesAvant(LocalDateTime lim) {
+        String sql = """
+            SELECT * FROM factures
+            WHERE paye=0 AND preavis_envoye=0 AND echeance_ts<=?""";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, lim.toEpochSecond(ZoneOffset.UTC));
+            ResultSet rs = ps.executeQuery();
+            List<Facture> l = new ArrayList<>();
+            while (rs.next()) l.add(rowToFacture(rs));
+            return l;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void marquerPreavisEnvoye(int fid) {
+        try (Connection conn = getConnection(); PreparedStatement ps =
+                conn.prepareStatement("UPDATE factures SET preavis_envoye=1 WHERE id=?")) {
+            ps.setInt(1, fid);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /* ---------------------- Rappels ---------------------- */
+
+    public void addRappel(Rappel r) {
+        String sql = """
+            INSERT INTO rappels(facture_id,dest,sujet,corps,date_envoi,date_envoi_ts)
+            VALUES(?,?,?,?,?,?)""";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt   (1, r.factureId());
+            ps.setString(2, r.dest());
+            ps.setString(3, r.sujet());
+            ps.setString(4, r.corps());
+            ps.setString(5, r.dateEnvoi().toString());
+            ps.setLong  (6, r.dateEnvoi().toEpochSecond(ZoneOffset.UTC));
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public List<Rappel> rappelsÀEnvoyer() {
+        String sql = "SELECT * FROM rappels WHERE envoye=0 AND date_envoi_ts<=?";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, LocalDateTime.now().toEpochSecond(ZoneOffset.UTC));
+            ResultSet rs = ps.executeQuery();
+            List<Rappel> l = new ArrayList<>();
+            while (rs.next()) {
+                l.add(new Rappel(
+                        rs.getInt("id"),
+                        rs.getInt("facture_id"),
+                        rs.getString("dest"),
+                        rs.getString("sujet"),
+                        rs.getString("corps"),
+                        LocalDateTime.ofEpochSecond(rs.getLong("date_envoi_ts"), 0, ZoneOffset.UTC),
+                        rs.getInt("envoye") != 0
+                ));
+            }
+            return l;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void markRappelEnvoyé(int id) {
+        try (Connection conn = getConnection(); PreparedStatement ps =
+                conn.prepareStatement("UPDATE rappels SET envoye=1 WHERE id=?")) {
+            ps.setInt(1, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /* ======================================================================
+       Helpers de conversion
+       ====================================================================== */
+
+    private static Prestataire rowToPrestataire(ResultSet rs) throws SQLException {
+        LocalDate d;
+        long ts = rs.getLong("date_contrat_ts");
+        if (rs.wasNull()) d = parseAny(rs.getString("date_contrat"));
+        else d = LocalDateTime.ofEpochSecond(ts, 0, ZoneOffset.UTC).toLocalDate();
+        String date = d == null ? "" : DATE_FR.format(d);
+        int imp = 0;
+        try { imp = rs.getInt("nb_impayes"); } catch (SQLException ignore) {}
+        Prestataire pr = new Prestataire(
+                rs.getInt("id"),
+                rs.getString("nom"),
+                rs.getString("societe"),
+                rs.getString("telephone"),
+                rs.getString("email"),
+                rs.getInt("note"),
+                rs.getString("facturation"),
+                date);
+        pr.setImpayes(imp);
+        return pr;
+    }
+
     private static Facture rowToFacture(ResultSet rs) throws SQLException {
         LocalDate ech;
         long echTs = rs.getLong("echeance_ts");
         if (rs.wasNull()) ech = parseAny(rs.getString("echeance"));
-        else ech = LocalDateTime.ofEpochSecond(echTs,0,ZoneOffset.UTC).toLocalDate();
+        else ech = LocalDateTime.ofEpochSecond(echTs, 0, ZoneOffset.UTC).toLocalDate();
 
         LocalDate dp;
         long dpTs = rs.getLong("date_paiement_ts");
         if (rs.wasNull()) dp = parseAny(rs.getString("date_paiement"));
-        else dp = LocalDateTime.ofEpochSecond(dpTs,0,ZoneOffset.UTC).toLocalDate();
+        else dp = LocalDateTime.ofEpochSecond(dpTs, 0, ZoneOffset.UTC).toLocalDate();
+
         int preavis = 0;
-        try {
-            preavis = rs.getInt("preavis_envoye");
-        } catch (SQLException ignore) {}
+        try { preavis = rs.getInt("preavis_envoye"); } catch (SQLException ignore) {}
+
         return new Facture(
                 rs.getInt("id"),
                 rs.getInt("prestataire_id"),
@@ -446,92 +567,6 @@ public class DB implements AutoCloseable, ConnectionProvider {
                 dp,
                 preavis != 0
         );
-    }
-
-    public List<Facture> facturesImpayeesAvant(LocalDateTime lim){
-        String sql = """
-            SELECT * FROM factures
-            WHERE paye=0 AND preavis_envoye=0 AND
-                  echeance_ts <= ?""";
-        try(Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)){
-            ps.setLong(1, lim.toEpochSecond(ZoneOffset.UTC));
-            ResultSet rs = ps.executeQuery();
-            List<Facture> l = new ArrayList<>();
-            while(rs.next()) l.add(rowToFacture(rs));
-            return l;
-        }catch(SQLException e){ throw new RuntimeException(e);}  }
-
-    public void marquerPreavisEnvoye(int fid){
-        try(Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(
-            "UPDATE factures SET preavis_envoye=1 WHERE id=?")){
-            ps.setInt(1,fid); ps.executeUpdate();
-        }catch(SQLException e){ throw new RuntimeException(e);} }
-
-    /* =========================== Rappels =========================== */
-    public void addRappel(Rappel r){
-        String sql = """
-            INSERT INTO rappels(facture_id,dest,sujet,corps,date_envoi,date_envoi_ts)
-            VALUES(?,?,?,?,?,?)
-        """;
-        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)){
-            ps.setInt   (1, r.factureId());
-            ps.setString(2, r.dest());
-            ps.setString(3, r.sujet());
-            ps.setString(4, r.corps());
-            ps.setString(5, r.dateEnvoi().toString());
-            ps.setLong  (6, r.dateEnvoi().toEpochSecond(ZoneOffset.UTC));
-            ps.executeUpdate();
-        }catch(SQLException e){ throw new RuntimeException(e); }
-    }
-
-    public List<Rappel> rappelsÀEnvoyer(){
-        String sql = "SELECT * FROM rappels WHERE envoye=0 AND date_envoi_ts<=?";
-        try(Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)){
-            ps.setLong(1, LocalDateTime.now().toEpochSecond(ZoneOffset.UTC));
-            ResultSet rs = ps.executeQuery();
-            List<Rappel> l = new ArrayList<>();
-            while(rs.next())
-                l.add(new Rappel(
-                    rs.getInt("id"),
-                    rs.getInt("facture_id"),
-                    rs.getString("dest"),
-                    rs.getString("sujet"),
-                    rs.getString("corps"),
-                    LocalDateTime.ofEpochSecond(rs.getLong("date_envoi_ts"),0,ZoneOffset.UTC),
-                    rs.getInt("envoye")!=0
-                ));
-            return l;
-        }catch(SQLException e){ throw new RuntimeException(e); }
-    }
-
-    public void markRappelEnvoyé(int id){
-        try(Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(
-            "UPDATE rappels SET envoye=1 WHERE id=?")){
-            ps.setInt(1,id); ps.executeUpdate();
-        }catch(SQLException e){ throw new RuntimeException(e); }
-    }
-
-    private static Prestataire rowToPrestataire(ResultSet rs) throws SQLException {
-        LocalDate d;
-        long ts = rs.getLong("date_contrat_ts");
-        if (rs.wasNull()) d = parseAny(rs.getString("date_contrat"));
-        else d = LocalDateTime.ofEpochSecond(ts,0,ZoneOffset.UTC).toLocalDate();
-        String date = d == null ? "" : DATE_FR.format(d);
-        int imp = 0;
-        try {
-            imp = rs.getInt("nb_impayes");
-        } catch (SQLException ignore) {}
-        Prestataire pr = new Prestataire(
-                rs.getInt("id"),
-                rs.getString("nom"),
-                rs.getString("societe"),
-                rs.getString("telephone"),
-                rs.getString("email"),
-                rs.getInt("note"),
-                rs.getString("facturation"),
-                date);
-        pr.setImpayes(imp);
-        return pr;
     }
 
     private static void fill(PreparedStatement ps, Prestataire p) throws SQLException {
@@ -549,6 +584,72 @@ public class DB implements AutoCloseable, ConnectionProvider {
             LocalDate d = LocalDate.parse(raw, DATE_FR);
             ps.setString(7, d.format(DATE_DB));
             ps.setLong(8, d.atStartOfDay().toEpochSecond(ZoneOffset.UTC));
+        }
+    }
+
+    private static LocalDate parseAny(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return LocalDate.parse(raw, DATE_DB);
+        } catch (DateTimeParseException ex) {
+            return LocalDate.parse(raw, DATE_FR);
+        }
+    }
+
+    /* ------------------- Méthodes de migration -------------------- */
+
+    private static void addMissingColumns(Connection conn) throws SQLException {
+        ensureTsColumn(conn, "prestataires", "date_contrat_ts", "date_contrat");
+        ensureTsColumn(conn, "services",      "date_ts",          "date");
+        ensureTsColumn(conn, "factures",      "echeance_ts",      "echeance");
+        ensureTsColumn(conn, "factures",      "date_paiement_ts", "date_paiement");
+        ensureTsColumn(conn, "rappels",       "date_envoi_ts",    "date_envoi");
+        ensureFactureMoneyColumns(conn);
+    }
+
+    private static void upgradeCopyToSelf(Connection conn) {
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("UPDATE mail_prefs SET copy_to_self='' WHERE copy_to_self IS NULL");
+            st.executeUpdate("ALTER TABLE mail_prefs ALTER COLUMN copy_to_self SET DEFAULT ''");
+            st.executeUpdate("ALTER TABLE mail_prefs ALTER COLUMN copy_to_self SET NOT NULL");
+        } catch (SQLException ignore) {}
+    }
+
+    private static void ensureTsColumn(Connection conn, String table, String col, String from) throws SQLException {
+        if (!hasColumn(conn, table, col)) {
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE "+table+" ADD COLUMN "+col+" INTEGER");
+                st.executeUpdate("UPDATE "+table+" SET "+col+"=strftime('%s', "+from+") WHERE "+from+" IS NOT NULL");
+            }
+        }
+    }
+
+    private static boolean hasColumn(Connection conn, String table, String col) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("PRAGMA table_info("+table+")");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) if (col.equalsIgnoreCase(rs.getString("name"))) return true;
+        }
+        return false;
+    }
+
+    private static void ensureColumn(Connection conn, String table, String col, String def) throws SQLException {
+        if (!hasColumn(conn, table, col)) {
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE "+table+" ADD COLUMN "+col+" "+def);
+            }
+        }
+    }
+
+    private static void ensureFactureMoneyColumns(Connection conn) throws SQLException {
+        ensureColumn(conn, "factures", "tva_pct",     "REAL NOT NULL DEFAULT 20");
+        ensureColumn(conn, "factures", "montant_tva", "REAL NOT NULL DEFAULT 0");
+        ensureColumn(conn, "factures", "montant_ttc", "REAL NOT NULL DEFAULT 0");
+        ensureColumn(conn, "factures", "devise",      "TEXT DEFAULT 'EUR'");
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("UPDATE factures SET tva_pct=20 WHERE tva_pct IS NULL");
+            st.executeUpdate("UPDATE factures SET montant_tva=montant_ht*tva_pct/100 WHERE montant_tva=0");
+            st.executeUpdate("UPDATE factures SET montant_ttc=montant_ht+montant_tva WHERE montant_ttc=0");
+            st.executeUpdate("UPDATE factures SET devise='EUR' WHERE devise IS NULL");
         }
     }
 }
