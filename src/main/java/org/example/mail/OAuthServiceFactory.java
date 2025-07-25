@@ -1,19 +1,19 @@
 package org.example.mail;
 
-/** Factory creating {@link OAuthService} implementations based on provider. */
 public final class OAuthServiceFactory {
+
     private OAuthServiceFactory() {}
 
-    /** Create the appropriate service for the given preferences. */
     public static OAuthService create(MailPrefs prefs) {
-        String p = prefs.provider();
-        if (p == null) return null;
-        if (p.equalsIgnoreCase("gmail")) {
-            return new GoogleAuthService(prefs);
-        }
-        if (p.equalsIgnoreCase("outlook")) {
-            return new MicrosoftAuthService(prefs);
-        }
-        return null;
+        if (prefs == null) return null;
+        return switch (normalize(prefs.provider())) {
+            case "gmail"   -> new GoogleAuthService(prefs);
+            case "outlook" -> new MicrosoftAuthService(prefs);
+            default        -> null;
+        };
+    }
+
+    private static String normalize(String v) {
+        return v == null ? "" : v.trim().toLowerCase();
     }
 }

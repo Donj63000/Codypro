@@ -1,81 +1,78 @@
 package org.example.gui;
 
 import javafx.scene.control.*;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
 
-/**
- * Dialogue affichant une aide pas‑à‑pas pour la configuration classique
- * SMTP (hôte, port, SSL, authentification…).
- */
-public class SmtpHelpDialog extends Dialog<Void> {
+public final class SmtpHelpDialog extends Dialog<Void> {
+    private static final String TITLE = "Aide – configuration SMTP classique";
 
     private static final String HELP_TEXT = """
-        ### Paramétrage SMTP classique – pas à pas
-        
+        ### Paramétrage SMTP classique – pas à pas
+
         1. **Trouver les informations de votre fournisseur**
-           | Fournisseur        | Serveur (host)            | Port SSL (465) | Port STARTTLS (587) |
-           |--------------------|---------------------------|---------------|---------------------|
-           | Gmail (mot de passe d’appli) | `smtp.gmail.com`    | 465           | 587                 |
-           | Outlook / Office365          | `smtp.office365.com`| 465           | 587                 |
-           | Free                         | `smtp.free.fr`      | 465           | —                   |
-           | Orange                       | `smtp.orange.fr`    | 465           | 587                 |
-           | OVH (e‑mail pro)             | `ssl0.ovh.net`      | 465           | 587                 |
-           
-           Si votre fournisseur n’est pas listé : cherchez « SMTP <nom_du_FAI> ».
 
-        2. **SSL vs. STARTTLS**
-           * **SSL (ou SMTPS)** : connexion chiffrée dès l’ouverture (port 465).  
-           * **STARTTLS** : la connexion démarre en clair puis passe en TLS (port 587).
+           | Fournisseur                | Serveur SMTP              | Port SSL 465 | Port STARTTLS 587 |
+           |----------------------------|---------------------------|--------------|-------------------|
+           | Gmail (mot de passe appli) | `smtp.gmail.com`          | 465          | 587               |
+           | Outlook / Office 365       | `smtp.office365.com`      | 465          | 587               |
+           | Free                       | `smtp.free.fr`            | 465          | —                 |
+           | Orange                     | `smtp.orange.fr`          | 465          | 587               |
+           | OVH e‑mail pro             | `ssl0.ovh.net`            | 465          | 587               |
 
-           Choisissez le port correspondant et cochez / décochez la case **SSL**.
+           Pour tout autre service, cherchez : **SMTP _nom‑du‑fournisseur_**.
 
-        3. **Utilisateur / mot de passe**
-           * Généralement l’adresse e‑mail complète est utilisée comme *utilisateur*.  
-           * Certains services (Gmail, iCloud…) requièrent un **mot de passe d’application** :
-             créez‑le dans le tableau de bord sécurité du fournisseur et copiez‑le ici.
+        2. **SSL vs STARTTLS**
+
+           * **SSL / SMTPS** : chiffrement immédiat (465).  
+           * **STARTTLS** : chiffrement négocié après connexion (587).
+
+           Sélectionnez le port puis activez ou non l’option **SSL**.
+
+        3. **Authentification**
+
+           * L’utilisateur est généralement l’adresse complète.  
+           * Gmail, iCloud … exigent un **mot de passe d’application**.
 
         4. **Adresse expéditeur**
-           Saisissez l’adresse qui doit apparaître dans le champ « From ».  
-           Pour éviter que les messages arrivent dans le spam :  
-           – utilisez la même adresse que celle du compte SMTP ;  
-           – vérifiez que votre domaine publie un enregistrement **SPF** correct.
+
+           Renseignez l’adresse qui apparaîtra dans « From ».  
+           Pour éviter le spam : utilisez la même adresse que celle du compte SMTP et
+           assurez‑vous que le domaine publie un enregistrement **SPF** valide.
 
         5. **Tester l’envoi**
-           Cliquez sur **Tester l’envoi** : vous recevrez un message témoin.  
-           En cas d’erreur :
-           * `Authentication failed` → vérifiez identifiant / mot de passe.  
-           * `Could not connect` → port ou hôte incorrect, pare‑feu bloquant.  
-           * `535 5.7.0 Authentication Required` → activez l’authentification SMTP dans
-             le webmail ou créez un mot de passe d’application.
-        
+
+           Utilisez **Tester l’envoi** ; vous devez recevoir un message test.  
+           * `Authentication failed` : identifiant ou mot de passe incorrect.  
+           * `Could not connect` : hôte ou port erroné, pare‑feu bloquant.  
+           * `535 5.7.0 Authentication Required` : activez SMTP authentifié ou créez
+             un mot de passe d’application.
+
         ---
-        #### Glossaire rapide
-        • **SMTP** : protocole standard d’envoi d’e‑mails.  
-        • **SSL / TLS** : chiffrement de la connexion.  
-        • **STARTTLS** : déclenchement du chiffrement après la connexion.  
-        • **SPF / DKIM** : enregistrements DNS prouvant l’authenticité des mails.        
+
+        #### Glossaire
+
+        • **SMTP** : protocole d’envoi des e‑mails  
+        • **SSL / TLS** : chiffrement de la connexion  
+        • **STARTTLS** : bascule vers TLS après connexion  
+        • **SPF / DKIM** : enregistrements DNS d’authentification
         """;
 
     public SmtpHelpDialog() {
-        setTitle("Aide – configuration SMTP classique");
+        setTitle(TITLE);
         getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
 
-        TextArea ta = new TextArea(HELP_TEXT);
-        ta.setEditable(false);
-        ta.setWrapText(true);
-        ta.setPrefColumnCount(80);
-        ta.setPrefRowCount(40);
+        TextArea area = new TextArea(HELP_TEXT);
+        area.setEditable(false);
+        area.setWrapText(true);
+        area.setPrefColumnCount(80);
+        area.setPrefRowCount(40);
+        area.setMaxWidth(Double.MAX_VALUE);
+        area.setMaxHeight(Double.MAX_VALUE);
+        VBox.setVgrow(area, Priority.ALWAYS);
 
-        // occuper l’espace disponible
-        ta.setMaxWidth(Double.MAX_VALUE);
-        ta.setMaxHeight(Double.MAX_VALUE);
-        VBox.setVgrow(ta, Priority.ALWAYS);
-
-        Region spacer = new Region(); // pour un padding correct avec le thème sombre
-        VBox root = new VBox(ta, spacer);
-        getDialogPane().setContent(root);
+        VBox box = new VBox(area, new Region());
+        box.setPrefWidth(760);
+        getDialogPane().setContent(box);
 
         ThemeManager.apply(this);
     }

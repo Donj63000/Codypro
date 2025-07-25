@@ -1,22 +1,31 @@
 package org.example.mail;
 
-import java.sql.*;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Map;
 import javax.crypto.SecretKey;
 import org.example.util.TokenCrypto;
 
 public record MailPrefs(
-        String host, int port, boolean ssl,
-        String user, String pwd,
-        String provider, String oauthClient,
-        String oauthRefresh, long oauthExpiry,
-        String from, String copyToSelf,
-        int delayHours,
+        String host,
+        int    port,
+        boolean ssl,
+        String user,
+        String pwd,
+        String provider,
+        String oauthClient,
+        String oauthRefresh,
+        long   oauthExpiry,
+        String from,
+        String copyToSelf,
+        int    delayHours,
         String style,
-        String subjPresta, String bodyPresta,
-        String subjSelf, String bodySelf) {
+        String subjPresta,
+        String bodyPresta,
+        String subjSelf,
+        String bodySelf) {
 
-    /** Built-in template packs indexed by style/language. */
     public static final Map<String, String[]> TEMPLATE_SETS = Map.of(
             "fr", new String[]{
                     "Rappel de paiement – échéance %ECHEANCE%",
@@ -31,8 +40,8 @@ public record MailPrefs(
                     Cordialement.
                     """,
                     "🛈 Pré‑avis facture %ID% – %NOM%",
-                    "Le prestataire %NOM% (%EMAIL%) n'a pas réglé la facture %ID% " +
-                            "(échéance %ECHEANCE%, montant %MONTANT% €)."
+                    "Le prestataire %NOM% (%EMAIL%) n'a pas réglé la facture %ID% "
+                            + "(échéance %ECHEANCE%, montant %MONTANT% €)."
             },
             "en", new String[]{
                     "Payment reminder – due %ECHEANCE%",
@@ -47,97 +56,103 @@ public record MailPrefs(
                     Regards.
                     """,
                     "Notice invoice %ID% – %NOM%",
-                    "Provider %NOM% (%EMAIL%) has not paid invoice %ID% " +
-                            "(due %ECHEANCE%, amount %MONTANT%€)."
+                    "Provider %NOM% (%EMAIL%) has not paid invoice %ID% "
+                            + "(due %ECHEANCE%, amount %MONTANT%€)."
             }
     );
 
-    /** Default style used when none is specified. */
     public static final String DEFAULT_STYLE = "fr";
+    private static final int   DEFAULT_DELAY = 48;
 
-    /* =========  utilitaires  ========= */
+    public MailPrefs {
+        host         = trim(host);
+        port         = port > 0 ? port : 465;
+        user         = trim(user);
+        pwd          = pwd == null ? "" : pwd;
+        provider     = trim(provider).toLowerCase();
+        oauthClient  = trim(oauthClient);
+        oauthRefresh = trim(oauthRefresh);
+        oauthExpiry  = Math.max(oauthExpiry, 0L);
+        from         = trim(from);
+        copyToSelf   = trim(copyToSelf);
+        delayHours   = delayHours > 0 ? delayHours : DEFAULT_DELAY;
+        style        = normalizeStyle(style);
+
+        String[] tpl = TEMPLATE_SETS.get(style);
+        subjPresta = blank(subjPresta) ? tpl[0] : subjPresta;
+        bodyPresta = blank(bodyPresta) ? tpl[1] : bodyPresta;
+        subjSelf   = blank(subjSelf)   ? tpl[2] : subjSelf;
+        bodySelf   = blank(bodySelf)   ? tpl[3] : bodySelf;
+    }
+
+    private static String trim(String v)       { return v == null ? "" : v.trim(); }
+    private static boolean blank(String v)     { return v == null || v.isBlank(); }
+    private static String normalizeStyle(String s) {
+        String st = trim(s).toLowerCase();
+        return TEMPLATE_SETS.containsKey(st) ? st : DEFAULT_STYLE;
+    }
+
     public static MailPrefs defaultValues() {
-        String[] tpl = TEMPLATE_SETS.get(DEFAULT_STYLE);
-        return new MailPrefs("smtp.gmail.com", 465, true,
-                "", "",
-                "", "", "", 0L,
+        String[] t = TEMPLATE_SETS.get(DEFAULT_STYLE);
+        return new MailPrefs(
+                "smtp.gmail.com", 465, true,
+                "", "", "", "", "", 0L,
                 "mon_mail@exemple.com", "",
-                48,
+                DEFAULT_DELAY,
                 DEFAULT_STYLE,
-                tpl[0], tpl[1], tpl[2], tpl[3]
+                t[0], t[1], t[2], t[3]
         );
     }
 
-    /**
-     * Create a new configuration from an SMTP preset. Message templates and
-     * delay use the default values while all user related fields are empty.
-     */
-    public static MailPrefs fromPreset(SmtpPreset pre) {
-        MailPrefs def = defaultValues();
+    public static MailPrefs fromPreset(SmtpPreset p) {
+        MailPrefs d = defaultValues();
         return new MailPrefs(
-                pre.host(), pre.port(), pre.ssl(),
+                p.host(), p.port(), p.ssl(),
                 "", "",
-                pre.provider(), "", "", 0L,
+                p.provider(), "", "", 0L,
                 "", "",
-                def.delayHours(),
-                def.style(),
-                def.subjPresta(), def.bodyPresta(),
-                def.subjSelf(), def.bodySelf()
+                d.delayHours(),
+                d.style(),
+                d.subjPresta(), d.bodyPresta(),
+                d.subjSelf(),   d.bodySelf()
         );
     }
 
     public static MailPrefs fromRS(ResultSet rs, SecretKey key) throws SQLException {
-        String provider = rs.getString("provider");
-        if(provider == null) provider = "";
-        String oauthClient = rs.getString("oauth_client");
-        if (oauthClient == null) oauthClient = "";
-        else oauthClient = TokenCrypto.decrypt(oauthClient, key);
-        String oauthRefresh = rs.getString("oauth_refresh");
-        if (oauthRefresh == null) oauthRefresh = "";
-        else oauthRefresh = TokenCrypto.decrypt(oauthRefresh, key);
-        long expiry = 0L;
-        try {
-            expiry = rs.getLong("oauth_expiry");
-            if(rs.wasNull()) expiry = 0L;
-        } catch(SQLException ignore) {}
-        String style = rs.getString("style");
-        if(style == null || style.isEmpty()) style = DEFAULT_STYLE;
-        String copy = rs.getString("copy_to_self");
-        if (copy == null) copy = "";
         return new MailPrefs(
-            rs.getString("host"),
-            rs.getInt("port"),
-            rs.getInt("ssl") != 0,
-            rs.getString("user"),
-            rs.getString("pwd"),
-            provider,
-            oauthClient,
-            oauthRefresh,
-            expiry,
-            rs.getString("from_addr"),
-            copy,
-            rs.getInt("delay_hours"),
-            style,
-            rs.getString("subj_tpl_presta"),
-            rs.getString("body_tpl_presta"),
-            rs.getString("subj_tpl_self"),
-            rs.getString("body_tpl_self")
+                rs.getString("host"),
+                rs.getInt("port"),
+                rs.getInt("ssl") != 0,
+                rs.getString("user"),
+                rs.getString("pwd"),
+                rs.getString("provider"),
+                TokenCrypto.decrypt(rs.getString("oauth_client"),  key),
+                TokenCrypto.decrypt(rs.getString("oauth_refresh"), key),
+                rs.getLong("oauth_expiry"),
+                rs.getString("from_addr"),
+                rs.getString("copy_to_self"),
+                rs.getInt("delay_hours"),
+                rs.getString("style"),
+                rs.getString("subj_tpl_presta"),
+                rs.getString("body_tpl_presta"),
+                rs.getString("subj_tpl_self"),
+                rs.getString("body_tpl_self")
         );
     }
 
     public void bind(PreparedStatement ps, SecretKey key) throws SQLException {
         ps.setString(1, host());
-        ps.setInt(2, port());
-        ps.setInt(3, ssl() ? 1 : 0);
+        ps.setInt   (2, port());
+        ps.setInt   (3, ssl() ? 1 : 0);
         ps.setString(4, user());
         ps.setString(5, pwd());
         ps.setString(6, provider());
-        ps.setString(7, TokenCrypto.encrypt(oauthClient(), key));
+        ps.setString(7, TokenCrypto.encrypt(oauthClient(),  key));
         ps.setString(8, TokenCrypto.encrypt(oauthRefresh(), key));
-        ps.setLong(9, oauthExpiry());
+        ps.setLong  (9, oauthExpiry());
         ps.setString(10, from());
-        ps.setString(11, copyToSelf() == null ? "" : copyToSelf());
-        ps.setInt(12, delayHours());
+        ps.setString(11, copyToSelf());
+        ps.setInt   (12, delayHours());
         ps.setString(13, style());
         ps.setString(14, subjPresta());
         ps.setString(15, bodyPresta());

@@ -1,5 +1,7 @@
 package org.example;
 
+import com.google.api.client.auth.oauth2.TokenResponseException;
+import jakarta.mail.AuthenticationFailedException;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
@@ -20,8 +22,8 @@ import org.example.model.Facture;
 import org.example.model.Prestataire;
 import org.example.model.Rappel;
 import org.example.security.AuthService;
-import jakarta.mail.AuthenticationFailedException;
-import com.google.api.client.auth.oauth2.TokenResponseException;
+
+import javax.crypto.SecretKey;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.ResultSet;
@@ -32,7 +34,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-public class MainApp extends Application {
+public final class MainApp extends Application {
 
     private DB dao;
     private MailPrefsDAO mailPrefsDao;
@@ -41,44 +43,44 @@ public class MainApp extends Application {
     private UserDB userDb;
 
     @Override
-    public void start(Stage primaryStage) {
-        try (AuthDB authDB = new AuthDB("auth.db")) {
-            AuthService auth = new AuthService(authDB);
-            try (Statement st = authDB.c().createStatement();
+    public void start(Stage stage) {
+        try (AuthDB auth = new AuthDB("auth.db")) {
+            AuthService sec = new AuthService(auth);
+            try (Statement st = auth.c().createStatement();
                  ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM users")) {
-                if (rs.next() && rs.getInt(1) == 0) {
-                    new RegisterDialog(auth).showAndWait();
-                }
+                if (rs.next() && rs.getInt(1) == 0) new RegisterDialog(sec).showAndWait();
             }
-            LoginDialog dlg = new LoginDialog(auth);
+            LoginDialog dlg = new LoginDialog(sec);
             dlg.showAndWait().ifPresent(sess -> {
                 try {
-                    Path dbPath = Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db");
-                    Files.createDirectories(dbPath.getParent());
-                    userDb = new UserDB(dbPath.toString(), sess.key());
+                    Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db");
+                    Files.createDirectories(dbFile.getParent());
+                    userDb = new UserDB(dbFile.toString(), sess.key());
                     dao = new DB(userDb::connection);
-                    launchUI(primaryStage, dao, sess.key());
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    Alert a = new Alert(Alert.AlertType.ERROR, "Impossible d’ouvrir la base utilisateur :\n" + e.getMessage(), ButtonType.OK);
-                    ThemeManager.apply(a);
-                    a.showAndWait();
+                    launchUI(stage, sess.key());
+                } catch (Exception ex) {
+                    showError("Impossible d’ouvrir la base utilisateur :\n" + ex.getMessage());
                 }
             });
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (Exception ex) {
+            ex.printStackTrace();
         }
     }
 
-    private void launchUI(Stage primaryStage, DB dao, javax.crypto.SecretKey key) {
+    private void launchUI(Stage stage, SecretKey key) {
         mailPrefsDao = new MailPrefsDAO(dao, key);
-        view = new MainView(primaryStage, dao, mailPrefsDao);
-        primaryStage.setTitle("Gestion des Prestataires");
+        view = new MainView(stage, dao, mailPrefsDao);
+        stage.setTitle("Gestion des Prestataires");
         Scene sc = new Scene(view.getRoot(), 920, 600);
         ThemeManager.apply(sc);
-        primaryStage.setScene(sc);
-        primaryStage.show();
-        scheduler = Executors.newSingleThreadScheduledExecutor();
+        stage.setScene(sc);
+        stage.show();
+
+        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "rappel-mailer");
+            t.setDaemon(true);
+            return t;
+        });
         scheduler.scheduleAtFixedRate(this::envoyerRappels, 1, 60, TimeUnit.MINUTES);
     }
 
@@ -86,22 +88,26 @@ public class MainApp extends Application {
         try {
             MailPrefs cfg = mailPrefsDao.load();
             if (cfg == null) return;
-            LocalDateTime lim = LocalDateTime.now().minusHours(cfg.delayHours());
-            for (Facture f : dao.facturesImpayeesAvant(lim)) {
+
+            LocalDateTime limit = LocalDateTime.now().minusHours(cfg.delayHours());
+
+            for (Facture f : dao.facturesImpayeesAvant(limit)) {
                 try {
                     Prestataire pr = dao.findPrestataire(f.getPrestataireId());
-                    if (pr == null) continue;
-                    if (pr.getEmail() == null || pr.getEmail().isBlank()) continue;
-                    Map<String, String> v = Mailer.vars(pr, f);
-                    Mailer.send(mailPrefsDao, cfg, pr.getEmail(), Mailer.subjToPresta(cfg, v), Mailer.bodyToPresta(cfg, v));
+                    if (pr == null || pr.getEmail().isBlank()) continue;
+                    Map<String, String> vars = Mailer.vars(pr, f);
+                    Mailer.send(mailPrefsDao, cfg, pr.getEmail(),
+                            Mailer.subjToPresta(cfg, vars), Mailer.bodyToPresta(cfg, vars));
                     if (!cfg.copyToSelf().isBlank()) {
-                        Mailer.send(mailPrefsDao, cfg, cfg.copyToSelf(), Mailer.subjToSelf(cfg, v), Mailer.bodyToSelf(cfg, v));
+                        Mailer.send(mailPrefsDao, cfg, cfg.copyToSelf(),
+                                Mailer.subjToSelf(cfg, vars), Mailer.bodyToSelf(cfg, vars));
                     }
                     dao.marquerPreavisEnvoye(f.getId());
                 } catch (Exception ex) {
                     handleAuthException(ex);
                 }
             }
+
             for (Rappel r : dao.rappelsÀEnvoyer()) {
                 try {
                     Mailer.send(mailPrefsDao, cfg, r.dest(), r.sujet(), r.corps());
@@ -116,23 +122,21 @@ public class MainApp extends Application {
     }
 
     private void handleAuthException(Throwable ex) {
-        boolean authIssue = false;
         for (Throwable t = ex; t != null; t = t.getCause()) {
             if (t instanceof AuthenticationFailedException || t instanceof TokenResponseException) {
-                authIssue = true;
-                break;
+                mailPrefsDao.invalidateOAuth();
+                Platform.runLater(() ->
+                        showError("Authentification expirée ; veuillez reconfigurer votre compte e‑mail."));
+                return;
             }
         }
-        if (authIssue) {
-            mailPrefsDao.invalidateOAuth();
-            Platform.runLater(() -> {
-                Alert a = new Alert(Alert.AlertType.ERROR, "Authentification expirée ; veuillez reconfigurer votre compte e‑mail.", ButtonType.OK);
-                ThemeManager.apply(a);
-                a.showAndWait();
-            });
-        } else {
-            ex.printStackTrace();
-        }
+        ex.printStackTrace();
+    }
+
+    private static void showError(String msg) {
+        Alert a = new Alert(Alert.AlertType.ERROR, msg, ButtonType.OK);
+        ThemeManager.apply(a);
+        a.showAndWait();
     }
 
     @Override

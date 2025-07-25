@@ -17,10 +17,12 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 
-/**
- * Helper for Microsoft Outlook/Office365 OAuth authentication using Jackson.
- */
-public class MicrosoftAuthService implements OAuthService {
+public final class MicrosoftAuthService implements OAuthService {
+    private static final String AUTH_URL   = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
+    private static final String TOKEN_URL  = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+    private static final String SCOPE      = "offline_access https://outlook.office.com/SMTP.Send";
+    private static final int    EXP_MARGIN = 60;
+
     private final MailPrefsDAO dao;
     private MailPrefs prefs;
     private final HttpClient http = HttpClient.newHttpClient();
@@ -32,110 +34,102 @@ public class MicrosoftAuthService implements OAuthService {
         this.prefs = dao.load();
     }
 
-    /** Construct using existing preferences without persistence. */
     public MicrosoftAuthService(MailPrefs prefs) {
         this.dao = null;
         this.prefs = prefs;
     }
 
-    /** Launch interactive OAuth flow and persist refresh token. */
     @Override
     public synchronized int interactiveAuth() {
-        String[] client = parseClient(prefs.oauthClient());
-        if (client[0].isEmpty()) throw new IllegalStateException("Missing client id");
-        HttpServer server = null;
+        String[] client = splitClient(prefs.oauthClient());
+        HttpServer srv = null;
         try {
             try {
-                server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-            } catch (Exception ex) {
-                int fb = fallbackPort();
-                server = HttpServer.create(new InetSocketAddress("localhost", fb), 0);
+                srv = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+            } catch (Exception e) {
+                srv = HttpServer.create(new InetSocketAddress("localhost", fallbackPort()), 0);
             }
-            CompletableFuture<String> codeFuture = new CompletableFuture<>();
-            server.createContext("/oauth", ex -> {
-                String query = ex.getRequestURI().getRawQuery();
-                String error = extractParam(query, "error");
-                String resp = (error == null)
-                        ? "<html><body>You may close this window.</body></html>"
-                        : "<html><body>Authorization failed: " + error + "</body></html>";
-                ex.sendResponseHeaders(200, resp.length());
-                try (OutputStream os = ex.getResponseBody()) { os.write(resp.getBytes()); }
-                if (error != null) {
-                    if (!codeFuture.isDone()) {
-                        codeFuture.completeExceptionally(new IllegalStateException(error));
-                    }
-                    return;
-                }
-                String code = extractParam(query, "code");
-                if (code != null) codeFuture.complete(code);
-            });
-            server.start();
-            int port = server.getAddress().getPort();
-            String redirect = "http://localhost:" + port + "/oauth";
-            String url = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize" +
-                    "?response_type=code" +
-                    "&client_id=" + enc(client[0]) +
-                    "&redirect_uri=" + enc(redirect) +
-                    "&scope=" + enc("offline_access https://outlook.office.com/SMTP.Send") +
-                    "&prompt=consent";
-            Desktop.getDesktop().browse(URI.create(url));
-            String code = codeFuture.join();
 
-            HttpRequest req = HttpRequest.newBuilder(URI.create("https://login.microsoftonline.com/common/oauth2/v2.0/token"))
+            CompletableFuture<String> codeFuture = new CompletableFuture<>();
+            srv.createContext("/oauth", ex -> {
+                String q = ex.getRequestURI().getRawQuery();
+                String err = param(q, "error");
+                String page = err == null
+                        ? "You may close this window."
+                        : "Authorization failed: " + err;
+                ex.sendResponseHeaders(200, 0);
+                try (OutputStream os = ex.getResponseBody()) {
+                    os.write(("<html><body>" + page + "</body></html>").getBytes());
+                }
+                if (err == null) {
+                    String code = param(q, "code");
+                    if (code != null) codeFuture.complete(code);
+                } else {
+                    codeFuture.completeExceptionally(new IllegalStateException(err));
+                }
+            });
+            srv.start();
+
+            int port = srv.getAddress().getPort();
+            String redirect = "http://localhost:" + port + "/oauth";
+            String open = AUTH_URL
+                    + "?response_type=code"
+                    + "&client_id=" + enc(client[0])
+                    + "&redirect_uri=" + enc(redirect)
+                    + "&scope=" + enc(SCOPE)
+                    + "&prompt=consent";
+            Desktop.getDesktop().browse(URI.create(open));
+
+            String code = codeFuture.join();
+            HttpRequest req = HttpRequest.newBuilder(URI.create(TOKEN_URL))
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(
-                            "code=" + enc(code) +
-                            "&client_id=" + enc(client[0]) +
-                            "&client_secret=" + enc(client[1]) +
-                            "&redirect_uri=" + enc(redirect) +
-                            "&grant_type=authorization_code"))
+                            "code=" + enc(code)
+                                    + "&client_id=" + enc(client[0])
+                                    + "&client_secret=" + enc(client[1])
+                                    + "&redirect_uri=" + enc(redirect)
+                                    + "&grant_type=authorization_code"))
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            JsonNode json = mapper.readTree(resp.body());
-            accessToken = json.path("access_token").asText(null);
-            String refresh = json.path("refresh_token").asText("");
-            long exp = json.path("expires_in").asLong();
-            long expiry = System.currentTimeMillis() / 1000 + exp;
+            JsonNode j = mapper.readTree(resp.body());
+            accessToken = j.path("access_token").asText("");
+            String refresh = j.path("refresh_token").asText("");
+            long expiry = System.currentTimeMillis() / 1000 + j.path("expires_in").asLong();
             prefs = updatePrefs(refresh, expiry);
             if (dao != null) dao.save(prefs);
             return port;
         } catch (Exception e) {
             throw new RuntimeException(e);
         } finally {
-            if (server != null) server.stop(0);
+            if (srv != null) srv.stop(0);
         }
     }
 
-    /** Return a valid access token, refreshing if required. */
     @Override
     public synchronized String getAccessToken() {
         long now = System.currentTimeMillis() / 1000;
-        if (accessToken == null || now >= prefs.oauthExpiry() - 60) {
-            refreshAccessToken();
-        }
+        if (accessToken == null || now >= prefs.oauthExpiry() - EXP_MARGIN) refreshAccessToken();
         return accessToken;
     }
 
-    /** Refresh the access token using the stored refresh token. */
     @Override
     public synchronized void refreshAccessToken() {
         String refresh = prefs.oauthRefresh();
         if (refresh.isBlank()) throw new IllegalStateException("No refresh token");
-        String[] client = parseClient(prefs.oauthClient());
+        String[] client = splitClient(prefs.oauthClient());
         try {
-            HttpRequest req = HttpRequest.newBuilder(URI.create("https://login.microsoftonline.com/common/oauth2/v2.0/token"))
+            HttpRequest req = HttpRequest.newBuilder(URI.create(TOKEN_URL))
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(
-                            "client_id=" + enc(client[0]) +
-                            "&client_secret=" + enc(client[1]) +
-                            "&refresh_token=" + enc(refresh) +
-                            "&grant_type=refresh_token"))
+                            "client_id=" + enc(client[0])
+                                    + "&client_secret=" + enc(client[1])
+                                    + "&refresh_token=" + enc(refresh)
+                                    + "&grant_type=refresh_token"))
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            JsonNode json = mapper.readTree(resp.body());
-            accessToken = json.path("access_token").asText(null);
-            long exp = json.path("expires_in").asLong();
-            long expiry = System.currentTimeMillis() / 1000 + exp;
+            JsonNode j = mapper.readTree(resp.body());
+            accessToken = j.path("access_token").asText("");
+            long expiry = System.currentTimeMillis() / 1000 + j.path("expires_in").asLong();
             prefs = updatePrefs(refresh, expiry);
             if (dao != null) dao.save(prefs);
         } catch (Exception e) {
@@ -143,37 +137,35 @@ public class MicrosoftAuthService implements OAuthService {
         }
     }
 
-    private static String[] parseClient(String val) {
-        if (val == null) throw new IllegalArgumentException("No OAuth client configured");
-        String[] parts = val.split(":", 2);
-        if (parts.length < 2 || parts[0].isBlank() || parts[1].isBlank()) {
+    private static String[] splitClient(String v) {
+        if (v == null) throw new IllegalArgumentException("No OAuth client configured");
+        String[] p = v.split(":", 2);
+        if (p.length != 2 || p[0].isBlank() || p[1].isBlank())
             throw new IllegalArgumentException("Client ID and secret must be provided");
-        }
-        return parts;
-    }
-
-    private static int fallbackPort() {
-        String prop = System.getProperty("oauth.port");
-        if (prop == null || prop.isBlank()) prop = System.getenv("OAUTH_PORT");
-        if (prop != null && !prop.isBlank()) {
-            try { return Integer.parseInt(prop); } catch (Exception ignore) {}
-        }
-        return 53682;
+        return p;
     }
 
     private static String enc(String s) {
         return URLEncoder.encode(s, StandardCharsets.UTF_8);
     }
 
-    private static String extractParam(String query, String name) {
-        if (query == null) return null;
-        for (String p : query.split("&")) {
-            int idx = p.indexOf('=');
-            if (idx > 0 && name.equals(p.substring(0, idx))) {
-                return URLDecoder.decode(p.substring(idx + 1), StandardCharsets.UTF_8);
-            }
+    private static String param(String q, String n) {
+        if (q == null) return null;
+        for (String p : q.split("&")) {
+            int i = p.indexOf('=');
+            if (i > 0 && n.equals(p.substring(0, i)))
+                return URLDecoder.decode(p.substring(i + 1), StandardCharsets.UTF_8);
         }
         return null;
+    }
+
+    private static int fallbackPort() {
+        String v = System.getProperty("oauth.port", System.getenv("OAUTH_PORT"));
+        try {
+            return v == null || v.isBlank() ? 53682 : Integer.parseInt(v);
+        } catch (Exception ignore) {
+            return 53682;
+        }
     }
 
     private MailPrefs updatePrefs(String refresh, long expiry) {

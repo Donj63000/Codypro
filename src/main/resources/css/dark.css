@@ -1,111 +1,169 @@
-/*======================================================================
-  Flat dark theme
-  Palette: #1e1e1e base | #252526 surface | #3c3c3c surface+1
-           #10a37f accent | #e6e6e6 text | #808080 text-secondary
-=======================================================================*/
-
-/* ---------------- FONTS ------------------------------------------- */
 @font-face {
     font-family: "Inter";
     src: url("/fonts/Inter-Regular.ttf");
 }
 
 .root {
-    -fx-font-family: "Inter", "Segoe UI", sans-serif;
-    -fx-font-size: 13px;
-
-    -fx-base:                   #1e1e1e;
-    -fx-background:             #1e1e1e;
-    -fx-control-inner-background: #252526;
-
-    -fx-accent:                 #10a37f;
-    -fx-focus-color:            -fx-accent;
-    -fx-faint-focus-color:      transparent;
-
-    -fx-text-fill:              #e6e6e6;
+    -fx-font-family: "Inter","Segoe UI",sans-serif;
+    -fx-font-size: 14px;
+    -fx-base: #1d1f21;
+    -fx-background: #1d1f21;
+    -fx-control-inner-background: #26282b;
+    -fx-accent: #ff9500;
+    -fx-focus-color: #ffb14d;
+    -fx-faint-focus-color: transparent;
+    -fx-text-fill: #ececec;
 }
 
-/* ---------------- TEXT & LABELS ----------------------------------- */
-.label            { -fx-text-fill: #e6e6e6; }
-.label.title      { -fx-font-size: 17px; -fx-font-weight: bold; }
-.label.caption    { -fx-text-fill: #bbbbbb; -fx-font-size: 10px; }
+.label {
+    -fx-text-fill: #ececec;
+}
 
-/* ---------------- BUTTONS ----------------------------------------- */
+.label.title {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+    -fx-padding: 0 0 10 0;
+}
+
+.label.caption {
+    -fx-text-fill: #b5b5b5;
+    -fx-font-size: 11px;
+}
+
 .button {
-    -fx-background-radius: 4;
-    -fx-background-color: #3c3c3c;
-    -fx-text-fill: #e6e6e6;
-    -fx-padding: 6 12;
+    -fx-background-radius: 6;
+    -fx-background-color: -fx-accent;
+    -fx-text-fill: #1d1f21;
+    -fx-padding: 8 18;
 }
-.button:hover     { -fx-background-color: derive(#3c3c3c, +10%); }
-.button:pressed   { -fx-background-color: derive(#3c3c3c, -10%); }
 
-/* primary accent button */
-.button.accent          { -fx-background-color: -fx-accent; }
-.button.accent:hover    { -fx-background-color: derive(-fx-accent, +10%); }
-.button.accent:pressed  { -fx-background-color: derive(-fx-accent, -10%); }
+.button:hover {
+    -fx-background-color: derive(-fx-accent,25%);
+}
 
-/* ---------------- TEXT INPUT -------------------------------------- */
+.button:pressed {
+    -fx-background-color: derive(-fx-accent,-15%);
+}
+
+.button.accent {
+    -fx-background-color: -fx-accent;
+    -fx-text-fill: #1d1f21;
+}
+
+.button.accent:hover {
+    -fx-background-color: derive(-fx-accent,25%);
+}
+
+.button.accent:pressed {
+    -fx-background-color: derive(-fx-accent,-15%);
+}
+
 .text-field,
+.password-field,
 .text-area,
 .date-picker > .text-field {
-    -fx-background-color: #252526;
-    -fx-text-fill:        #e6e6e6;
-    -fx-border-color:     #3c3c3c;
+    -fx-background-color: #26282b;
+    -fx-text-fill: #ececec;
+    -fx-border-color: #3f4246;
+    -fx-border-radius: 4;
 }
+
 .text-field:focused,
-.date-picker:focused > .text-field {
+.password-field:focused,
+.date-picker:focused > .text-field,
+.text-area:focused {
     -fx-border-color: -fx-accent;
 }
 
-/* ---------------- TABLEVIEW --------------------------------------- */
-.table-view {
-    -fx-background-color: #252526;
-    -fx-table-cell-border-color: #3c3c3c;
-}
-.table-view .column-header-background {
-    -fx-background-color: #252526;
-}
-.table-view .column-header,
-.table-view .filler {
-    -fx-size: 30px;
-    -fx-border-color: transparent transparent #3c3c3c transparent;
-}
-.table-view .column-header .label {
-    -fx-text-fill: #e6e6e6;
-    -fx-font-weight: bold;
-}
-.table-row-cell:filled:selected,
-.list-cell:filled:selected {
-    -fx-background-color: #3e4a54;
-}
-
-/* icons \u2713 / \u2717 (Unicode) */
-.cell-paid   { -fx-text-fill: -fx-accent; }
-.cell-unpaid { -fx-text-fill: #e74c3c; }
-
-/* ---------------- SCROLLBAR --------------------------------------- */
-.scroll-bar:vertical,
-.scroll-bar:horizontal { -fx-background-color: transparent; }
-
-.scroll-bar .thumb {
-    -fx-background-color: #4f5054;
+.progress-bar > .track {
+    -fx-background-color: #323539;
     -fx-background-radius: 4;
 }
+
+.progress-bar > .bar {
+    -fx-background-color: -fx-accent;
+    -fx-background-radius: 4;
+}
+
+.table-view {
+    -fx-background-color: #212325;
+    -fx-table-cell-border-color: #3b3d40;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: #212325;
+}
+
+.table-view .column-header,
+.table-view .filler {
+    -fx-size: 32px;
+    -fx-border-color: transparent transparent #3b3d40 transparent;
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: #ececec;
+    -fx-font-weight: bold;
+}
+
+.table-row-cell:filled:hover {
+    -fx-background-color: #2a2d32;
+}
+
+.table-row-cell:filled:selected,
+.table-row-cell:focused:selected,
+.list-cell:filled:selected {
+    -fx-background-color: #353c44;
+}
+
+.table-row-cell:filled:selected .text,
+.table-row-cell:filled:selected .label,
+.list-cell:filled:selected {
+    -fx-text-fill: #ececec;
+}
+
+.cell-paid {
+    -fx-text-fill: -fx-accent;
+}
+
+.cell-unpaid {
+    -fx-text-fill: #ff5d5d;
+}
+
+.scroll-bar:vertical,
+.scroll-bar:horizontal {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: #4f4f4f;
+    -fx-background-radius: 4;
+}
+
 .scroll-bar .thumb:hover {
-    -fx-background-color: derive(#4f5054, +10%);
+    -fx-background-color: derive(#4f4f4f,20%);
 }
 
-/* ---------------- DETAIL PANE ------------------------------------- */
 #detail-pane {
-    -fx-background-color: #252526;
-    -fx-background-radius: 8;
-    -fx-padding: 20;
+    -fx-background-color: #26282b;
+    -fx-background-radius: 10;
+    -fx-padding: 26;
 }
 
-/* -------- LOGIN DIALOG -------------------------------------------------- */
-#login-grid .label          { -fx-font-weight: bold; }
+#login-grid .label {
+    -fx-font-weight: bold;
+}
+
 #login-grid .text-field,
-#login-grid .password-field { -fx-pref-width: 260; }
-.login-header               { -fx-font-size: 18; -fx-font-weight: bold; -fx-padding: 0 0 16 0; }
-.error                      { -fx-text-fill: #e74c3c; }
+#login-grid .password-field {
+    -fx-pref-width: 280;
+}
+
+.login-header {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-padding: 0 0 22 0;
+}
+
+.error {
+    -fx-text-fill: #ff5d5d;
+}

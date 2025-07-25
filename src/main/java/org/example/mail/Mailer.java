@@ -2,50 +2,19 @@ package org.example.mail;
 
 import jakarta.mail.*;
 import jakarta.mail.internet.*;
-
 import org.example.dao.MailPrefsDAO;
 import org.example.model.Facture;
 import org.example.model.Prestataire;
 
-import org.example.mail.OAuthService;
-import org.example.mail.OAuthServiceFactory;
-import org.example.mail.GoogleAuthService;
-
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Utility class for sending e-mails using the preferences stored in
- * {@link MailPrefs}. The previous implementation relied on environment
- * variables; this version lets the caller provide all configuration values
- * explicitly.
- */
 public final class Mailer {
     private Mailer() {}
 
-    /** Keep OAuth services per provider to reuse refreshed tokens. */
-    private static final Map<String, OAuthService> SERVICES = new HashMap<>();
+    private static final Map<String, OAuthService> SERVICES = new ConcurrentHashMap<>();
 
-    /** Create a mail {@link Session} using the provided configuration. */
-    private static Session makeSession(MailPrefs cfg) {
-        Properties p = new Properties();
-        p.put("mail.smtp.auth", "true");
-        if (cfg.ssl()) {
-            p.put("mail.smtp.ssl.enable", "true");   // SMTPS port 465
-        } else {
-            p.put("mail.smtp.starttls.enable", "true"); // ← AJOUT
-        }
-        p.put("mail.smtp.host", cfg.host());
-        p.put("mail.smtp.port", String.valueOf(cfg.port()));
-        return Session.getInstance(p, new Authenticator() {
-            @Override
-            protected PasswordAuthentication getPasswordAuthentication() {
-                return new PasswordAuthentication(cfg.user(), cfg.pwd());
-            }
-        });
-    }
-
-    /** Create an OAuth {@link Session} using XOAUTH2. */
-    private static Session makeSessionOAuth(MailPrefs cfg, String token) {
+    private static Properties baseProps(MailPrefs cfg) {
         Properties p = new Properties();
         p.put("mail.smtp.auth", "true");
         if (cfg.ssl()) {
@@ -55,6 +24,21 @@ public final class Mailer {
         }
         p.put("mail.smtp.host", cfg.host());
         p.put("mail.smtp.port", String.valueOf(cfg.port()));
+        return p;
+    }
+
+    private static Session makeSession(MailPrefs cfg) {
+        Properties p = baseProps(cfg);
+        return Session.getInstance(p, new Authenticator() {
+            @Override
+            protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication(cfg.user(), cfg.pwd());
+            }
+        });
+    }
+
+    private static Session makeSessionOAuth(MailPrefs cfg, String token) {
+        Properties p = baseProps(cfg);
         p.put("mail.smtp.sasl.enable", "true");
         p.put("mail.smtp.sasl.mechanisms", "XOAUTH2");
         p.put("mail.smtp.auth.mechanisms", "XOAUTH2");
@@ -68,56 +52,40 @@ public final class Mailer {
         });
     }
 
-    /**
-     * Send an e-mail using the given configuration.
-     *
-     * @param dao     data access used for persistent OAuth parameters
-     * @param cfg     mail server preferences
-     * @param to      recipient address
-     * @param subject mail subject
-     * @param body    mail body (plain text)
-     */
     public static void send(MailPrefsDAO dao, MailPrefs cfg,
                             String to, String subject, String body)
             throws MessagingException {
-        Session s;
-        String provider = cfg.provider() == null ? "" : cfg.provider().toLowerCase();
 
-        OAuthService svc = SERVICES.get(provider);
-        if (svc == null) {
-            switch (provider) {
-                case "gmail" -> svc = new GoogleAuthService(dao);
-                default -> svc = OAuthServiceFactory.create(cfg);
-            }
-            if (svc != null) SERVICES.put(provider, svc);
-        } else if ("gmail".equals(provider) && dao != null
-                && svc instanceof GoogleAuthService gs && !gs.hasDao()) {
+        String provider = Optional.ofNullable(cfg.provider()).orElse("").toLowerCase();
+
+        OAuthService svc = SERVICES.computeIfAbsent(provider, p -> {
+            if ("gmail".equals(p)) return new GoogleAuthService(dao);
+            return OAuthServiceFactory.create(cfg);
+        });
+
+        if ("gmail".equals(provider) && dao != null && svc instanceof GoogleAuthService gs && !gs.hasDao()) {
             svc = new GoogleAuthService(dao, gs.prefs());
             SERVICES.put(provider, svc);
         }
 
-        if (svc != null) {
-            String token = svc.getAccessToken();
-            s = makeSessionOAuth(cfg, token);
-        } else {
-            s = makeSession(cfg);
-        }
-        Message m = new MimeMessage(s);
-        m.setFrom(new InternetAddress(cfg.from()));
-        m.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to, false));
-        m.setSubject(subject);
-        m.setText(body);
-        Transport.send(m);
+        Session session = (svc == null)
+                ? makeSession(cfg)
+                : makeSessionOAuth(cfg, svc.getAccessToken());
+
+        Message msg = new MimeMessage(session);
+        msg.setFrom(new InternetAddress(cfg.from()));
+        msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to, false));
+        msg.setSubject(subject);
+        msg.setText(body);
+        Transport.send(msg);
     }
 
-    /* ===== helpers de templating ===== */
     private static String inject(String tpl, Map<String, String> vars) {
         String out = tpl;
         for (var e : vars.entrySet()) out = out.replace(e.getKey(), e.getValue());
         return out;
     }
 
-    /** Build a map of variables for template injection. */
     public static Map<String, String> vars(Prestataire pr, Facture f) {
         return Map.of(
                 "%NOM%", pr.getNom(),
@@ -128,19 +96,8 @@ public final class Mailer {
         );
     }
 
-    public static String subjToPresta(MailPrefs cfg, Map<String, String> v) {
-        return inject(cfg.subjPresta(), v);
-    }
-
-    public static String bodyToPresta(MailPrefs cfg, Map<String, String> v) {
-        return inject(cfg.bodyPresta(), v);
-    }
-
-    public static String subjToSelf(MailPrefs cfg, Map<String, String> v) {
-        return inject(cfg.subjSelf(), v);
-    }
-
-    public static String bodyToSelf(MailPrefs cfg, Map<String, String> v) {
-        return inject(cfg.bodySelf(), v);
-    }
+    public static String subjToPresta(MailPrefs cfg, Map<String, String> v) { return inject(cfg.subjPresta(), v); }
+    public static String bodyToPresta(MailPrefs cfg, Map<String, String> v) { return inject(cfg.bodyPresta(), v); }
+    public static String subjToSelf  (MailPrefs cfg, Map<String, String> v) { return inject(cfg.subjSelf(),   v); }
+    public static String bodyToSelf  (MailPrefs cfg, Map<String, String> v) { return inject(cfg.bodySelf(),   v); }
 }

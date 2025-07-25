@@ -1,45 +1,50 @@
 package org.example.dao;
 
-import org.example.security.CryptoUtils;
 import org.example.model.ServiceRow;
+import org.example.security.CryptoUtils;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-public class SecureDB extends DB {
+public final class SecureDB extends DB {
     private final int userId;
     private final SecretKey key;
 
-    public SecureDB(ConnectionProvider cp, int userId, SecretKey key) {
-        super(cp);            // réutilise toutes vos méthodes
+    public SecureDB(ConnectionProvider provider, int userId, SecretKey key) {
+        super(provider);
         this.userId = userId;
         this.key = key;
     }
 
-    /* Exemple : surcharge addService → chiffrer ‘description’ */
     @Override
-    public void addService(int pid, String descPlain) {
+    public void addService(int prestataireId, String plainDescription) {
         try {
-            var blob = CryptoUtils.encrypt(descPlain.getBytes(StandardCharsets.UTF_8), key);
-            String base64 = CryptoUtils.blobToBase64(blob);
-            super.addService(pid, base64); // appelez ensuite la méthode d'origine avec base64
-        } catch (Exception e) { throw new RuntimeException(e); }
+            var blob = CryptoUtils.encrypt(plainDescription.getBytes(StandardCharsets.UTF_8), key);
+            super.addService(prestataireId, CryptoUtils.blobToBase64(blob));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    /* inverse au moment de la lecture (services()) */
     @Override
-    public List<ServiceRow> services(int pid) {
-        List<ServiceRow> enc = super.services(pid);
-        List<ServiceRow> out = new ArrayList<>();
-        for (ServiceRow sr : enc) {
+    public List<ServiceRow> services(int prestataireId) {
+        List<ServiceRow> encrypted = super.services(prestataireId);
+        List<ServiceRow> decrypted = new ArrayList<>(encrypted.size());
+        for (ServiceRow row : encrypted) {
             try {
-                var blob = CryptoUtils.base64ToBlob(sr.desc());
+                var blob = CryptoUtils.base64ToBlob(row.desc());
                 String plain = new String(CryptoUtils.decrypt(blob, key), StandardCharsets.UTF_8);
-                out.add(new ServiceRow(plain, sr.date()));
-            } catch (Exception e) { throw new RuntimeException(e); }
+                decrypted.add(new ServiceRow(plain, row.date()));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
         }
-        return out;
+        return decrypted;
+    }
+
+    public int userId() {
+        return userId;
     }
 }

@@ -16,257 +16,185 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
-/**
- * Helper for Google OAuth authentication using Jackson for JSON parsing.
- * <p>
- * Nouveauté : après l’obtention du premier access‑token, on interroge l’API
- * <code>/oauth2/v3/userinfo</code> afin de récupérer l’adresse e‑mail et de la
- * stocker dans {@link MailPrefs#user()}. Cela évite l’erreur SMTP
- * « Invalid SASL username » lors du premier envoi.
- * </p>
- */
-public class GoogleAuthService implements OAuthService {
+public final class GoogleAuthService implements OAuthService {
+    private static final String SCOPE = "https://mail.google.com/ https://www.googleapis.com/auth/userinfo.email";
+    private static final int    EXPIRY_MARGIN = 60;
+
     private final MailPrefsDAO dao;
-    private MailPrefs prefs;
-
-    private final HttpClient http = HttpClient.newHttpClient();
+    private MailPrefs          prefs;
+    private final HttpClient   http  = HttpClient.newHttpClient();
     private final ObjectMapper mapper = new ObjectMapper();
-
-    /** Dernier access‑token valide (ré‑utilisé jusqu’à expiration). */
     private String accessToken;
 
-    /* ------------------------------------------------------------------ */
-    /*                         CONSTRUCTEURS                              */
-    /* ------------------------------------------------------------------ */
+    public GoogleAuthService(MailPrefsDAO dao)          { this.dao = dao;  this.prefs = dao.load(); }
+    public GoogleAuthService(MailPrefs prefs)           { this.dao = null; this.prefs = prefs;      }
+    public GoogleAuthService(MailPrefsDAO dao, MailPrefs prefs) { this.dao = dao; this.prefs = prefs; }
 
-    public GoogleAuthService(MailPrefsDAO dao) {
-        this.dao = dao;
-        this.prefs = dao.load();
-    }
+    public MailPrefs prefs()  { return prefs; }
+    public boolean   hasDao() { return dao != null; }
 
-    /** Constructeur sans persistance (tests unitaires, etc.). */
-    public GoogleAuthService(MailPrefs prefs) {
-        this.dao = null;
-        this.prefs = prefs;
-    }
-
-    /** Constructeur interne : DAO + prefs déjà chargés. */
-    public GoogleAuthService(MailPrefsDAO dao, MailPrefs prefs) {
-        this.dao = dao;
-        this.prefs = prefs;
-    }
-
-    /* ------------------------------------------------------------------ */
-    /*                        ACCESSEURS UTILES                           */
-    /* ------------------------------------------------------------------ */
-
-    public MailPrefs prefs()                { return prefs; }
-    public boolean   hasDao()               { return dao != null; }
-
-    /* ------------------------------------------------------------------ */
-    /*                       FLUX D’AUTHENTIFICATION                      */
-    /* ------------------------------------------------------------------ */
-
-    /**
-     * Lance le flow OAuth « loop‑back server ». À la fin :
-     * <ul>
-     *   <li>un refresh‑token durable est stocké ;</li>
-     *   <li>l’adresse Gmail est renseignée dans <em>prefs.user()</em>.</li>
-     * </ul>
-     *
-     * @return le port TCP utilisé par le serveur local.
-     */
     @Override
     public synchronized int interactiveAuth() {
-        String[] client = parseClient(prefs.oauthClient());
-        if (client[0].isEmpty())
-            throw new IllegalStateException("Missing client id");
+        String[] client = splitClient(prefs.oauthClient());
+        int fallback = fallbackPort();
 
-        int fallbackPort = fallbackPort();
-        HttpServer server = null;
+        HttpServer server;
+        try {
+            server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        } catch (Exception e) {                                       // port 0 indisponible
+            try { server = HttpServer.create(new InetSocketAddress("localhost", fallback), 0); }
+            catch (Exception ex) { throw new RuntimeException(ex); }
+        }
+
+        CompletableFuture<String> codeFuture = new CompletableFuture<>();
+        String state = UUID.randomUUID().toString();
+
+        server.createContext("/oauth", ex -> {
+            String q    = ex.getRequestURI().getRawQuery();
+            String err  = param(q, "error");
+            String html = (err == null)
+                    ? "<html><body>You may close this window.</body></html>"
+                    : "<html><body>Authorization failed: " + err + "</body></html>";
+            ex.sendResponseHeaders(200, 0);
+            try (OutputStream os = ex.getResponseBody()) { os.write(html.getBytes(StandardCharsets.UTF_8)); }
+
+            if (err != null) {
+                codeFuture.completeExceptionally(new IllegalStateException(err));
+                return;
+            }
+            String code = param(q, "code");
+            if (code != null && state.equals(param(q, "state"))) codeFuture.complete(code);
+        });
+        server.start();
+
+        int    port     = server.getAddress().getPort();
+        String redirect = "http://localhost:" + port + "/oauth";
+
+        /* ---------- PKCE : challenge ----------- */
+        byte[] verBytes = new byte[32];
+        new SecureRandom().nextBytes(verBytes);
+        String verifier  = Base64.getUrlEncoder().withoutPadding().encodeToString(verBytes);
+        byte[] digest    = sha256(verifier.getBytes(StandardCharsets.US_ASCII));
+        String challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+
+        /* ---------- ouverture navigateur -------- */
+        String authUrl = "https://accounts.google.com/o/oauth2/v2/auth"
+                + "?response_type=code"
+                + "&client_id="          + enc(client[0])
+                + "&redirect_uri="       + enc(redirect)
+                + "&scope="              + enc(SCOPE)
+                + "&access_type=offline"
+                + "&prompt=consent"
+                + "&state="              + enc(state)
+                + "&code_challenge="     + enc(challenge)
+                + "&code_challenge_method=S256";
+
+        try { if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI.create(authUrl)); }
+        catch (Exception e) { throw new RuntimeException("Cannot open browser", e); }
 
         try {
-            /* ------------ 1) serveur local pour capter le code --------- */
-            CompletableFuture<String> codeFuture = new CompletableFuture<>();
-            try {
-                server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-            } catch (Exception ex) {
-                // port auto impossible → on tente le port fallback
-                server = HttpServer.create(new InetSocketAddress("localhost", fallbackPort), 0);
-            }
-
-            String state = UUID.randomUUID().toString();
-            server.createContext("/oauth", ex -> {
-                String query = ex.getRequestURI().getRawQuery();
-                String error = extractParam(query, "error");
-
-                String html = (error == null)
-                        ? "<html><body>You may close this window.</body></html>"
-                        : "<html><body>Authorization failed: " + error + "</body></html>";
-
-                ex.sendResponseHeaders(200, html.length());
-                try (OutputStream os = ex.getResponseBody()) { os.write(html.getBytes()); }
-
-                if (error != null) {
-                    codeFuture.completeExceptionally(new IllegalStateException(error));
-                    return;
-                }
-                String code  = extractParam(query, "code");
-                String check = extractParam(query, "state");
-                if (code != null && state.equals(check))
-                    codeFuture.complete(code);
-            });
-            server.start();
-            int port = server.getAddress().getPort();
-            String redirect = "http://localhost:" + port + "/oauth";
-
-            /* ------------ 2) PKCE (verifier + challenge) --------------- */
-            byte[] buf = new byte[32];
-            new SecureRandom().nextBytes(buf);
-            String verifier = Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(verifier.getBytes(StandardCharsets.US_ASCII));
-            String challenge = Base64.getUrlEncoder().withoutPadding()
-                    .encodeToString(digest);
-
-            /* ------------ 3) ouverture du navigateur ------------------- */
-            String url = "https://accounts.google.com/o/oauth2/v2/auth" +
-                    "?response_type=code" +
-                    "&client_id=" + enc(client[0]) +
-                    "&redirect_uri=" + enc(redirect) +
-                    "&scope=" + enc("https://mail.google.com/ https://www.googleapis.com/auth/userinfo.email") +
-                    "&access_type=offline" +
-                    "&prompt=consent" +
-                    "&state=" + enc(state) +
-                    "&code_challenge=" + enc(challenge) +
-                    "&code_challenge_method=S256";
-            Desktop.getDesktop().browse(URI.create(url));
-
-            /* ------------ 4) échange code ↔ tokens --------------------- */
+            /* ---------- échange code ↔ token -------- */
             String code = codeFuture.join();
-            HttpRequest tokenReq = HttpRequest.newBuilder(URI.create("https://oauth2.googleapis.com/token"))
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .POST(HttpRequest.BodyPublishers.ofString(
-                            "code=" + enc(code) +
-                                    "&client_id=" + enc(client[0]) +
-                                    "&code_verifier=" + enc(verifier) +
-                                    "&redirect_uri=" + enc(redirect) +
-                                    "&grant_type=authorization_code"))
-                    .build();
-            HttpResponse<String> tokenResp = http.send(tokenReq, HttpResponse.BodyHandlers.ofString());
-            JsonNode json = mapper.readTree(tokenResp.body());
+            HttpResponse<String> tokenResp = http.send(
+                    HttpRequest.newBuilder(URI.create("https://oauth2.googleapis.com/token"))
+                            .header("Content-Type", "application/x-www-form-urlencoded")
+                            .POST(HttpRequest.BodyPublishers.ofString(
+                                    "code="          + enc(code)      +
+                                            "&client_id="    + enc(client[0]) +
+                                            "&code_verifier="+ enc(verifier)  +
+                                            "&redirect_uri=" + enc(redirect)  +
+                                            "&grant_type=authorization_code"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
 
-            this.accessToken = json.path("access_token").asText(null);
-            String refresh   = json.path("refresh_token").asText("");
-            if (refresh.isEmpty()) refresh = prefs.oauthRefresh();
-            long expiry = (System.currentTimeMillis() / 1000)
-                    + json.path("expires_in").asLong();
+            JsonNode j = mapper.readTree(tokenResp.body());
+            accessToken         = j.path("access_token").asText(null);
+            String refreshToken = j.path("refresh_token").asText(prefs.oauthRefresh());
+            long   expiry       = System.currentTimeMillis()/1000 + j.path("expires_in").asLong();
 
-            /* ------------ 5) récupération de l’adresse e‑mail ---------- */
-            String email = prefs.user();               // valeur existante
+            /* ---------- e‑mail utilisateur --------- */
+            String email = prefs.user();
             if (email == null || email.isBlank()) {
                 try {
-                    HttpRequest whoReq = HttpRequest.newBuilder(
-                                    URI.create("https://www.googleapis.com/oauth2/v3/userinfo"))
-                            .header("Authorization", "Bearer " + accessToken)
-                            .GET()
-                            .build();
-                    HttpResponse<String> whoResp = http.send(
-                            whoReq, HttpResponse.BodyHandlers.ofString());
-                    email = mapper.readTree(whoResp.body())
-                            .path("email").asText("");
-                } catch (Exception ignore) {
-                    // en cas d’échec on laisse l’utilisateur vide,
-                    // le champ pourra être saisi manuellement
-                }
+                    HttpResponse<String> who = http.send(
+                            HttpRequest.newBuilder(URI.create("https://www.googleapis.com/oauth2/v3/userinfo"))
+                                    .header("Authorization", "Bearer " + accessToken)
+                                    .build(),
+                            HttpResponse.BodyHandlers.ofString());
+                    email = mapper.readTree(who.body()).path("email").asText("");
+                } catch (Exception ignore) {}
             }
 
-            /* ------------ 6) persistance des prefs --------------------- */
-            prefs = updatePrefs(refresh, expiry, email);
+            prefs = updatePrefs(refreshToken, expiry, email);
             if (dao != null) dao.save(prefs);
-
             return port;
-
         } catch (Exception e) {
-            throw new RuntimeException(
-                    "Failed to complete Google OAuth flow", e);
-
+            throw new RuntimeException("Failed to complete Google OAuth flow", e);
         } finally {
-            if (server != null) server.stop(0);
+            server.stop(0);
         }
     }
-
-    /* ------------------------------------------------------------------ */
-    /*                    GESTION DES ACCESS‑TOKENS                       */
-    /* ------------------------------------------------------------------ */
 
     @Override
     public synchronized String getAccessToken() {
         long now = System.currentTimeMillis() / 1000;
-        if (accessToken == null || now >= prefs.oauthExpiry() - 60) {
-            refreshAccessToken();
-        }
+        if (accessToken == null || now >= prefs.oauthExpiry() - EXPIRY_MARGIN) refreshAccessToken();
         return accessToken;
     }
 
     @Override
     public synchronized void refreshAccessToken() {
         String refresh = prefs.oauthRefresh();
-        if (refresh.isBlank())
-            throw new IllegalStateException("No refresh token");
-
-        String[] client = parseClient(prefs.oauthClient());
+        if (refresh.isBlank()) throw new IllegalStateException("No refresh token");
+        String[] client = splitClient(prefs.oauthClient());
 
         try {
-            HttpRequest req = HttpRequest.newBuilder(URI.create("https://oauth2.googleapis.com/token"))
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .POST(HttpRequest.BodyPublishers.ofString(
-                            "client_id=" + enc(client[0]) +
-                                    "&refresh_token=" + enc(refresh) +
-                                    "&grant_type=refresh_token"))
-                    .build();
-            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            JsonNode json = mapper.readTree(resp.body());
+            HttpResponse<String> resp = http.send(
+                    HttpRequest.newBuilder(URI.create("https://oauth2.googleapis.com/token"))
+                            .header("Content-Type", "application/x-www-form-urlencoded")
+                            .POST(HttpRequest.BodyPublishers.ofString(
+                                    "client_id="     + enc(client[0]) +
+                                            "&refresh_token="+ enc(refresh)   +
+                                            "&grant_type=refresh_token"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
 
-            this.accessToken = json.path("access_token").asText(null);
-            long expiry = (System.currentTimeMillis() / 1000)
-                    + json.path("expires_in").asLong();
+            JsonNode j = mapper.readTree(resp.body());
+            accessToken = j.path("access_token").asText(null);
+            long expiry = System.currentTimeMillis()/1000 + j.path("expires_in").asLong();
 
             prefs = updatePrefs(refresh, expiry, prefs.user());
             if (dao != null) dao.save(prefs);
-
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    /* ------------------------------------------------------------------ */
-    /*                         OUTILS INTERNES                            */
-    /* ------------------------------------------------------------------ */
+    /* ---------- helpers internes ---------- */
+    private static byte[] sha256(byte[] in) {
+        try { return MessageDigest.getInstance("SHA-256").digest(in); }
+        catch (NoSuchAlgorithmException e) { throw new IllegalStateException("SHA‑256 unavailable", e); }
+    }
 
-    private static String[] parseClient(String val) {
+    private static String[] splitClient(String val) {
         if (val == null) throw new IllegalArgumentException("No OAuth client configured");
-        String[] parts = val.split(":", 2);
-        if (parts.length < 2 || parts[0].isBlank() || parts[1].isBlank()) {
+        String[] p = val.split(":", 2);
+        if (p.length != 2 || p[0].isBlank() || p[1].isBlank())
             throw new IllegalArgumentException("Client ID and secret must be provided");
-        }
-        return parts;
+        return p;
     }
 
-    /** URL‑encode UTF‑8. */
-    private static String enc(String s) {
-        return URLEncoder.encode(s, StandardCharsets.UTF_8);
-    }
+    private static String enc(String s) { return URLEncoder.encode(s, StandardCharsets.UTF_8); }
 
-    /** Extrait un paramètre de requête GET. */
-    private static String extractParam(String query, String name) {
-        if (query == null) return null;
-        for (String p : query.split("&")) {
+    private static String param(String q, String name) {
+        if (q == null) return null;
+        for (String p : q.split("&")) {
             int idx = p.indexOf('=');
             if (idx > 0 && name.equals(p.substring(0, idx)))
                 return URLDecoder.decode(p.substring(idx + 1), StandardCharsets.UTF_8);
@@ -274,23 +202,12 @@ public class GoogleAuthService implements OAuthService {
         return null;
     }
 
-    /** Port fallback lorsque le port 0 (auto) n’est pas disponible. */
     private static int fallbackPort() {
-        String prop = System.getProperty("oauth.port");
-        if (prop == null || prop.isBlank()) prop = System.getenv("OAUTH_PORT");
-        if (prop != null && !prop.isBlank())
-            try { return Integer.parseInt(prop); } catch (Exception ignore) {}
-        return 53682;
+        String v = System.getProperty("oauth.port", System.getenv("OAUTH_PORT"));
+        try { return (v == null || v.isBlank()) ? 53682 : Integer.parseInt(v); }
+        catch (Exception e) { return 53682; }
     }
 
-    /* ------------------------------------------------------------------ */
-    /*                  MISE À JOUR DES PRÉFÉRENCES                       */
-    /* ------------------------------------------------------------------ */
-
-    /**
-     * Construit un nouvel objet {@link MailPrefs} à partir des anciennes
-     * préférences + des nouvelles données OAuth.
-     */
     private MailPrefs updatePrefs(String refresh, long expiry, String user) {
         return new MailPrefs(
                 prefs.host(), prefs.port(), prefs.ssl(),
@@ -305,12 +222,6 @@ public class GoogleAuthService implements OAuthService {
                 prefs.delayHours(),
                 prefs.style(),
                 prefs.subjPresta(), prefs.bodyPresta(),
-                prefs.subjSelf(),  prefs.bodySelf()
-        );
-    }
-
-    /* --- surcharge conservant l’API historique ---------------------- */
-    private MailPrefs updatePrefs(String refresh, long expiry) {
-        return updatePrefs(refresh, expiry, prefs.user());
+                prefs.subjSelf(),  prefs.bodySelf());
     }
 }

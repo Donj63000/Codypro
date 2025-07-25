@@ -3,26 +3,25 @@ package org.example.gui;
 import javafx.scene.Scene;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.DialogPane;
+import java.util.List;
 
-/** Utility class for applying the global CSS theme. */
 public final class ThemeManager {
-    private static final String THEME =
-            ThemeManager.class.getResource("/css/dark.css").toExternalForm();
+    private static final String CSS = ThemeManager.class
+            .getResource("/css/dark.css")
+            .toExternalForm();
 
     private ThemeManager() {}
 
-    /** Apply the application stylesheet to the given scene. */
     public static void apply(Scene scene) {
-        if (scene != null && !scene.getStylesheets().contains(THEME)) {
-            scene.getStylesheets().add(THEME);
-        }
+        add(scene == null ? null : scene.getStylesheets());
     }
 
-    /** Apply the application stylesheet to the given dialog. */
     public static void apply(Dialog<?> dialog) {
-        DialogPane pane = dialog.getDialogPane();
-        if (pane != null && !pane.getStylesheets().contains(THEME)) {
-            pane.getStylesheets().add(THEME);
-        }
+        DialogPane pane = dialog == null ? null : dialog.getDialogPane();
+        add(pane == null ? null : pane.getStylesheets());
+    }
+
+    private static void add(List<String> list) {
+        if (list != null && !list.contains(CSS)) list.add(CSS);
     }
 }

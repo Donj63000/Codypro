@@ -1,7 +1,11 @@
 package org.example.mail;
 
-public interface OAuthService {
+public sealed interface OAuthService
+        permits GoogleAuthService, MicrosoftAuthService {
+
     int interactiveAuth();
+
     String getAccessToken();
+
     void refreshAccessToken();
 }
