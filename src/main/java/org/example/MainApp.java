@@ -28,8 +28,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -41,6 +44,7 @@ public final class MainApp extends Application {
     private MainView view;
     private ScheduledExecutorService scheduler;
     private UserDB userDb;
+    private final Set<String> prenotified = ConcurrentHashMap.newKeySet();
 
     @Override
     public void start(Stage stage) {
@@ -89,7 +93,34 @@ public final class MainApp extends Application {
             MailPrefs cfg = mailPrefsDao.load();
             if (cfg == null) return;
 
-            LocalDateTime limit = LocalDateTime.now().minusHours(cfg.delayHours());
+            LocalDateTime now = LocalDateTime.now();
+
+            for (Facture f : dao.facturesImpayeesAvant(now.plusHours(48))) {
+                LocalDateTime due = f.getEcheance().atStartOfDay();
+                long hoursUntil = Duration.between(now, due).toHours();
+                int slot = (hoursUntil >= 47 && hoursUntil <= 48) ? 48 :
+                        (hoursUntil >= 23 && hoursUntil <= 24) ? 24 :
+                                (hoursUntil >= 11 && hoursUntil <= 12) ? 12 : -1;
+                if (slot > 0) {
+                    String key = f.getId() + ":" + slot;
+                    if (prenotified.add(key)) {
+                        try {
+                            Prestataire pr = dao.findPrestataire(f.getPrestataireId());
+                            if (pr == null) continue;
+                            String dest = cfg.copyToSelf().isBlank() ? cfg.from() : cfg.copyToSelf();
+                            String subject = "Échéance dans " + slot + " h – facture " + f.getId();
+                            String body = "La facture " + f.getId() + " (" +
+                                    String.format("%.2f", f.getMontantTtc()) + " €) pour " +
+                                    pr.getNom() + " arrive à échéance le " + f.getEcheanceFr() + ".";
+                            Mailer.send(mailPrefsDao, cfg, dest, subject, body);
+                        } catch (Exception ex) {
+                            handleAuthException(ex);
+                        }
+                    }
+                }
+            }
+
+            LocalDateTime limit = now.minusHours(cfg.delayHours());
 
             for (Facture f : dao.facturesImpayeesAvant(limit)) {
                 try {
