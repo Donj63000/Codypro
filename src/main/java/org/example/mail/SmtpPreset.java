@@ -16,9 +16,10 @@ public record SmtpPreset(
     public String toString() { return label; }
 
     public static final SmtpPreset[] PRESETS = {
-            new SmtpPreset("custom",  "Personnalisé",                 "smtp.example.com", 465, true,  false),
-            new SmtpPreset("gmail",   "Gmail (OAuth)",                "smtp.gmail.com",   587, false, true ),
-            new SmtpPreset("outlook", "Outlook / Office365 (OAuth)",  "smtp.office365.com",587,false, true )
+            new SmtpPreset("local",   "Local Relay (localhost:2525)", "localhost",        2525, false, false),
+            new SmtpPreset("custom",  "Personnalisé",                "smtp.example.com", 465,  true,  false),
+            new SmtpPreset("gmail",   "Gmail (OAuth)",               "smtp.gmail.com",   587,  false, true ),
+            new SmtpPreset("outlook", "Outlook / Office365 (OAuth)", "smtp.office365.com",587,  false, true )
     };
 
     private static final Map<String, SmtpPreset> INDEX =

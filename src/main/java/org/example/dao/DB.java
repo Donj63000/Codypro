@@ -404,7 +404,7 @@ public class DB implements ConnectionProvider {
         }
     }
 
-    public List<Rappel> rappelsÀEnvoyer() {
+    public List<Rappel> rappelsAEnvoyer() {
         String sql = "SELECT * FROM rappels WHERE envoye=0 AND date_envoi_ts<=?";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -427,7 +427,7 @@ public class DB implements ConnectionProvider {
         }
     }
 
-    public void markRappelEnvoyé(int id) {
+    public void markRappelEnvoye(int id) {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement("UPDATE rappels SET envoye=1 WHERE id=?")) {
             ps.setInt(1, id);

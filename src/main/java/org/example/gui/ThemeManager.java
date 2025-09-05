@@ -6,11 +6,23 @@ import javafx.scene.control.DialogPane;
 import java.util.List;
 
 public final class ThemeManager {
-    private static final String CSS = ThemeManager.class
-            .getResource("/css/dark.css")
-            .toExternalForm();
+    public enum Theme { DARK, LIGHT }
+
+    private static final String DARK_URL = ThemeManager.class.getResource("/css/dark.css").toExternalForm();
+    private static final String LIGHT_URL = ThemeManager.class.getResource("/css/light.css").toExternalForm();
+
+    private static Theme current = Theme.DARK;
 
     private ThemeManager() {}
+
+    public static boolean isDark() { return current == Theme.DARK; }
+
+    public static void setTheme(Theme theme) { current = theme == null ? Theme.DARK : theme; }
+
+    public static void toggle(Scene scene) {
+        current = isDark() ? Theme.LIGHT : Theme.DARK;
+        reapply(scene);
+    }
 
     public static void apply(Scene scene) {
         add(scene == null ? null : scene.getStylesheets());
@@ -22,6 +34,10 @@ public final class ThemeManager {
     }
 
     private static void add(List<String> list) {
-        if (list != null && !list.contains(CSS)) list.add(CSS);
+        if (list == null) return;
+        list.remove(DARK_URL); list.remove(LIGHT_URL);
+        list.add(isDark() ? DARK_URL : LIGHT_URL);
     }
+
+    private static void reapply(Scene scene) { apply(scene); }
 }

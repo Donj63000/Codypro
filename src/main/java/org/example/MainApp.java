@@ -16,6 +16,7 @@ import org.example.gui.LoginDialog;
 import org.example.gui.MainView;
 import org.example.gui.RegisterDialog;
 import org.example.gui.ThemeManager;
+import org.example.mail.LocalSmtpRelay;
 import org.example.mail.Mailer;
 import org.example.mail.MailPrefs;
 import org.example.model.Facture;
@@ -45,6 +46,7 @@ public final class MainApp extends Application {
     private ScheduledExecutorService scheduler;
     private UserDB userDb;
     private final Set<String> prenotified = ConcurrentHashMap.newKeySet();
+    private LocalSmtpRelay smtpRelay;
 
     @Override
     public void start(Stage stage) {
@@ -86,6 +88,15 @@ public final class MainApp extends Application {
             return t;
         });
         scheduler.scheduleAtFixedRate(this::envoyerRappels, 1, 60, TimeUnit.MINUTES);
+
+        // Démarre un relais SMTP local pour faciliter les tests (localhost:2525)
+        try {
+            smtpRelay = new LocalSmtpRelay(mailPrefsDao, 2525);
+            smtpRelay.start();
+            System.out.println("[SMTP-Relay] Démarré sur localhost:2525");
+        } catch (Exception ex) {
+            System.err.println("[SMTP-Relay] Impossible de démarrer: " + ex.getMessage());
+        }
     }
 
     private void envoyerRappels() {
@@ -139,10 +150,10 @@ public final class MainApp extends Application {
                 }
             }
 
-            for (Rappel r : dao.rappelsÀEnvoyer()) {
+            for (Rappel r : dao.rappelsAEnvoyer()) {
                 try {
                     Mailer.send(mailPrefsDao, cfg, r.dest(), r.sujet(), r.corps());
-                    dao.markRappelEnvoyé(r.id());
+                    dao.markRappelEnvoye(r.id());
                 } catch (Exception ex) {
                     handleAuthException(ex);
                 }
@@ -176,5 +187,6 @@ public final class MainApp extends Application {
         if (dao != null) dao.close();
         if (userDb != null) userDb.close();
         if (view != null) view.shutdownExecutor();
+        if (smtpRelay != null) smtpRelay.stop();
     }
 }

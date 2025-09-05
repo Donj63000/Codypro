@@ -80,6 +80,39 @@ public final class Mailer {
         Transport.send(msg);
     }
 
+    /**
+     * Envoi d'un MimeMessage déjà construit via la configuration (avec OAuth si requis).
+     */
+    public static void send(MailPrefsDAO dao, MailPrefs cfg, MimeMessage source) throws MessagingException {
+        if (cfg == null) throw new MessagingException("Configuration mail manquante");
+        String provider = Optional.ofNullable(cfg.provider()).orElse("").toLowerCase();
+
+        OAuthService svc = SERVICES.computeIfAbsent(provider, p -> {
+            if ("gmail".equals(p)) return new GoogleAuthService(dao);
+            return OAuthServiceFactory.create(cfg);
+        });
+
+        if ("gmail".equals(provider) && dao != null && svc instanceof GoogleAuthService gs && !gs.hasDao()) {
+            svc = new GoogleAuthService(dao, gs.prefs());
+            SERVICES.put(provider, svc);
+        }
+
+        Session session = (svc == null)
+                ? makeSession(cfg)
+                : makeSessionOAuth(cfg, svc.getAccessToken());
+
+        // Reconstruit le message avec la bonne Session pour conserver pièces jointes/headers
+        try {
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            source.writeTo(bos);
+            MimeMessage msg = new MimeMessage(session, new java.io.ByteArrayInputStream(bos.toByteArray()));
+            if (msg.getFrom() == null || msg.getFrom().length == 0) msg.setFrom(new InternetAddress(cfg.from()));
+            Transport.send(msg);
+        } catch (java.io.IOException e) {
+            throw new MessagingException("Erreur lors de la copie du message", e);
+        }
+    }
+
     private static String inject(String tpl, Map<String, String> vars) {
         String out = tpl;
         for (var e : vars.entrySet()) out = out.replace(e.getKey(), e.getValue());

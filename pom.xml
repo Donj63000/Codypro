@@ -132,6 +132,25 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- Ikonli: icônes vectorielles JavaFX -->
+        <dependency>
+            <groupId>org.kordamp.ikonli</groupId>
+            <artifactId>ikonli-javafx</artifactId>
+            <version>12.3.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.kordamp.ikonli</groupId>
+            <artifactId>ikonli-bootstrapicons-pack</artifactId>
+            <version>12.3.1</version>
+        </dependency>
+
+            
+        <!-- SMTP server embeddable pour le mode local -->
+        <dependency>
+            <groupId>org.subethamail</groupId>
+            <artifactId>subethasmtp</artifactId>
+            <version>3.1.7</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -209,3 +228,7 @@
     </build>
 
 </project>
+
+
+
+
