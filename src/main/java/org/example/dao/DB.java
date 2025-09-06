@@ -528,12 +528,58 @@ public class DB implements ConnectionProvider {
         ensureMoney(c);
     }
 
-    private static void upgradeCopyToSelf(Connection c) {
+    private static void upgradeCopyToSelf(Connection c) throws SQLException {
+        try (Statement st = c.createStatement()) {
+            st.executeUpdate("""
+                CREATE TABLE IF NOT EXISTS mail_prefs(
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    host TEXT, port INTEGER, ssl INTEGER,
+                    user TEXT, pwd TEXT,
+                    provider TEXT,
+                    oauth_client TEXT, oauth_refresh TEXT, oauth_expiry INTEGER,
+                    from_addr TEXT,
+                    copy_to_self TEXT,
+                    delay_hours INTEGER,
+                    style TEXT,
+                    subj_tpl_presta TEXT, body_tpl_presta TEXT,
+                    subj_tpl_self TEXT,   body_tpl_self TEXT
+                )
+            """);
+        }
+
         try (Statement st = c.createStatement()) {
             st.executeUpdate("UPDATE mail_prefs SET copy_to_self='' WHERE copy_to_self IS NULL");
-            st.executeUpdate("ALTER TABLE mail_prefs ALTER COLUMN copy_to_self SET DEFAULT ''");
-            st.executeUpdate("ALTER TABLE mail_prefs ALTER COLUMN copy_to_self SET NOT NULL");
-        } catch (SQLException ignore) {
+        }
+
+        try (Statement st = c.createStatement()) {
+            st.executeUpdate("""
+                CREATE TABLE IF NOT EXISTS mail_prefs_new(
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    host TEXT, port INTEGER, ssl INTEGER,
+                    user TEXT, pwd TEXT,
+                    provider TEXT,
+                    oauth_client TEXT, oauth_refresh TEXT, oauth_expiry INTEGER,
+                    from_addr TEXT,
+                    copy_to_self TEXT NOT NULL DEFAULT '',
+                    delay_hours INTEGER,
+                    style TEXT,
+                    subj_tpl_presta TEXT, body_tpl_presta TEXT,
+                    subj_tpl_self TEXT,   body_tpl_self TEXT
+                )
+            """);
+            st.executeUpdate("""
+                INSERT OR REPLACE INTO mail_prefs_new
+                SELECT id, host, port, ssl, user, pwd, provider,
+                       oauth_client, oauth_refresh, oauth_expiry,
+                       from_addr,
+                       COALESCE(copy_to_self, ''),
+                       delay_hours, style,
+                       subj_tpl_presta, body_tpl_presta,
+                       subj_tpl_self,   body_tpl_self
+                FROM mail_prefs
+            """);
+            st.executeUpdate("DROP TABLE mail_prefs");
+            st.executeUpdate("ALTER TABLE mail_prefs_new RENAME TO mail_prefs");
         }
     }
 

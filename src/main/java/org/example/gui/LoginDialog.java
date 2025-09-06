@@ -2,6 +2,9 @@ package org.example.gui;
 
 import javafx.animation.TranslateTransition;
 import javafx.application.Platform;
+import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.SimpleObjectProperty;
+import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -14,6 +17,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
+import java.util.Arrays;
 import org.example.security.AuthService;
 
 public class LoginDialog extends Dialog<AuthService.Session> {
@@ -60,22 +64,29 @@ public class LoginDialog extends Dialog<AuthService.Session> {
         pfPwd.setOnAction(e -> ok.fire());
         Platform.runLater(tfUser::requestFocus);
 
-        setResultConverter(bt -> {
-            if (bt != ButtonType.OK) {
-                return null;
-            }
+        final ObjectProperty<AuthService.Session> result = new SimpleObjectProperty<>();
+
+        ok.addEventFilter(ActionEvent.ACTION, evt -> {
             try {
-                AuthService.Session sess = auth.login(tfUser.getText().trim(), pfPwd.getText().toCharArray());
+                String user = tfUser.getText().trim();
+                char[] pwd  = pfPwd.getText().toCharArray();
+                AuthService.Session sess = auth.login(user, pwd);
+                Arrays.fill(pwd, '\0');
                 if (sess == null) {
-                    throw new IllegalArgumentException("Identifiants invalides");
+                    lblError.setText("Identifiants invalides");
+                    shake(root);
+                    evt.consume();
+                } else {
+                    result.set(sess);
                 }
-                return sess;
             } catch (Exception ex) {
-                lblError.setText(ex.getMessage());
+                lblError.setText(ex.getMessage() != null ? ex.getMessage() : "Erreur d’authentification");
                 shake(root);
-                return null;
+                evt.consume();
             }
         });
+
+        setResultConverter(bt -> bt == ButtonType.OK ? result.get() : null);
 
         ThemeManager.apply(this);
     }
