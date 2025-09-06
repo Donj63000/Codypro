@@ -3,10 +3,13 @@ package org.example.dao;
 import javax.crypto.SecretKey;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.Statement;
 import java.sql.SQLException;
 import java.util.HexFormat;
 import java.util.Properties;
+
+import static org.example.dao.SqlcipherUtil.disableWalForRekey;
+import static org.example.dao.SqlcipherUtil.enableWal;
+import static org.example.dao.SqlcipherUtil.rekey;
 
 public final class UserDB implements AutoCloseable {
     private final Connection conn;
@@ -24,8 +27,9 @@ public final class UserDB implements AutoCloseable {
         } catch (SQLException first) {
             // Fallback: DB non chiffrée existante -> ouvre en clair puis chiffre
             c = DriverManager.getConnection(url);
-            try (Statement st = c.createStatement()) {
-                st.execute("PRAGMA rekey = '" + hexKey + "'");
+            try {
+                disableWalForRekey(c);
+                rekey(c, key.getEncoded(), null);
             } catch (SQLException rekeyEx) {
                 try { c.close(); } catch (Exception ignore) {}
                 throw rekeyEx;
@@ -33,11 +37,7 @@ public final class UserDB implements AutoCloseable {
         }
 
         this.conn = c;
-        try (Statement st = conn.createStatement()) {
-            st.execute("PRAGMA journal_mode = WAL");
-            st.execute("PRAGMA busy_timeout = 5000");
-            st.execute("PRAGMA foreign_keys = 1");
-        }
+        enableWal(conn);
     }
 
     public Connection connection() { return conn; }
