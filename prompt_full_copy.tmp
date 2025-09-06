@@ -1,0 +1,255 @@
+Merci pour la capture : **`[SQLITE_NOTADB] File opened that is not a database file (file is not a database)`**.
+Ce message apparaît **quand SQLite/SQLCipher ouvre un fichier qui n’est pas une base valide pour la connexion courante**. En pratique, ça arrive dans 4 cas :
+
+1. **La connexion n’a pas reçu la clé (`PRAGMA key`)** → vous ouvrez un fichier **chiffré** comme s’il était **clair**.
+2. **La connexion a reçu une clé, mais le fichier est clair** → vous ouvrez un fichier **clair** comme s’il était **chiffré**.
+3. **Le pool ouvre une nouvelle connexion sans lui appliquer la clé** (cas Hikari) → #1 de façon aléatoire.
+4. **Fichier corrompu / pas une DB SQLite** (copie interrompue, renommage raté, etc.).
+
+Je vous donne **les correctifs concrets** pour éliminer #1 et #3 de façon définitive, **détecter** #2 et **réparer** automatiquement, et **isoler** #4.
+
+---
+
+## 1) Corriger l’initialisation des connexions (clé appliquée à **chaque** connexion)
+
+Avec Hikari, **chaque** connexion du pool doit recevoir `PRAGMA key`. Sinon, à la première ré‑ouverture du pool ou à la création d’une nouvelle connexion, on retombe sur `SQLITE_NOTADB`.
+
+### Patch `UserDB.openPool(byte[] key)` (idempotent, prêt à coller)
+
+> Objectif : pool **taille 1** (SQLite), **clé appliquée à chaque connexion** via `connectionInitSql`, et **vérification immédiate** de la clé.
+
+```java
+// imports utiles
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+
+import java.nio.file.Path;
+import java.sql.*;
+import java.util.HexFormat;
+
+public final class UserDB implements AutoCloseable {
+    private final Path dbPath;
+    private HikariDataSource ds;
+
+    public UserDB(String file) {
+        this.dbPath = Path.of(file);
+    }
+
+    public synchronized void close() {
+        if (ds != null) {
+            try { ds.close(); } catch (Exception ignore) {}
+            ds = null;
+        }
+    }
+
+    public synchronized Connection getConnection() throws SQLException {
+        if (ds == null) throw new SQLException("UserDB pool is not open");
+        return ds.getConnection();
+    }
+
+    public synchronized void openPool(byte[] keyBytes) throws SQLException {
+        close(); // ferme un pool précédent si besoin
+
+        String hexKey = HexFormat.of().formatHex(keyBytes);
+        HikariConfig cfg = new HikariConfig();
+        cfg.setJdbcUrl("jdbc:sqlite:" + dbPath.toAbsolutePath());
+        cfg.setMaximumPoolSize(1); // SQLite -> 1
+        // ⚠️ très important : la clé est appliquée à CHAQUE connexion du pool
+        cfg.setConnectionInitSql("PRAGMA key = \"x'" + hexKey + "'\"");
+
+        ds = new HikariDataSource(cfg);
+
+        // Vérifie la clé sur la première connexion (remonte une erreur ici si mauvaise clé)
+        try (Connection c = ds.getConnection(); Statement st = c.createStatement()) {
+            st.execute("PRAGMA foreign_keys=ON");
+            st.execute("PRAGMA busy_timeout=5000");
+            // Teste l’accès (déclenche la déchiffre de la page 1)
+            try (ResultSet rs = st.executeQuery("SELECT count(*) FROM sqlite_master")) {
+                if (!rs.next()) throw new SQLException("sqlite_master not readable");
+            }
+        } catch (SQLException e) {
+            // Laisse la suite gérer NOTADB (migration ou rotation)
+            throw e;
+        }
+    }
+}
+```
+
+**Pourquoi ça corrige ?**
+Même si Hikari crée plus tard une nouvelle connexion, **elle recevra la clé** grâce à `setConnectionInitSql(...)`. Avec `maximumPoolSize=1`, on élimine aussi les surprises de verrouillage.
+
+---
+
+## 2) En cas de `NOTADB` : distinguer **fichier clair** vs **fichier corrompu** et réparer
+
+### 2.1. Stratégie robuste
+
+* **Étape A** : j’essaie d’ouvrir **avec clé** (`openPool(key)`).
+
+  * Si ça passe → **OK**.
+  * Si **NOTADB** → je ferme le pool et je teste **sans clé** (connexion brute `DriverManager`).
+
+* **Étape B** : ouverture **sans clé** (plain) :
+
+  * Si ça passe → **le fichier est en clair**. → **Je le migre** vers une DB chiffrée (export `sqlcipher_export`).
+  * Si ça échoue encore → **fichier corrompu/non‑DB**. → **Je le renomme** en `.corrupt.<timestamp>` et je repars sur un fichier neuf (qui sera chiffré).
+
+### 2.2. Code « réparer si NOTADB » (à mettre dans `UserDB`)
+
+```java
+public synchronized void openOrRepair(byte[] keyBytes) throws SQLException {
+    try {
+        openPool(keyBytes); // essaie normal (avec clé)
+        return;
+    } catch (SQLException e) {
+        if (!isNotADB(e)) throw e;
+    }
+
+    // --> Ici : NOTADB avec clé (soit clair, soit corrompu)
+    // Teste SANS clé : si ça passe, c'est une DB claire à migrer
+    try (Connection cPlain = DriverManager.getConnection("jdbc:sqlite:" + dbPath.toAbsolutePath());
+         Statement st = cPlain.createStatement()) {
+        st.execute("PRAGMA foreign_keys=ON");
+        st.execute("PRAGMA busy_timeout=5000");
+        try (ResultSet rs = st.executeQuery("SELECT 1")) { if (!rs.next()) throw new SQLException("no row"); }
+        // OK en clair -> migrer vers chiffré
+        migratePlainToEncrypted(cPlain, keyBytes);
+    } catch (SQLException ex2) {
+        // même SANS clé ça casse : fichier corrompu ou pas une DB
+        try {
+            java.nio.file.Path bad = dbPath.resolveSibling(dbPath.getFileName() + ".corrupt." + System.currentTimeMillis());
+            java.nio.file.Files.move(dbPath, bad);
+        } catch (Exception ignore) {}
+        // On laisse créer une DB neuve avec clé ci-dessous
+    }
+
+    // Ré-ouvre normalement (clé + test)
+    openPool(keyBytes);
+}
+
+private static boolean isNotADB(SQLException e) {
+    String m = e.getMessage();
+    return m != null && (m.contains("file is not a database") || m.contains("NOTADB"));
+}
+
+private void migratePlainToEncrypted(Connection plainConn, byte[] keyBytes) throws SQLException {
+    String hex = java.util.HexFormat.of().formatHex(keyBytes);
+    var tmpEnc = dbPath.resolveSibling(dbPath.getFileName().toString() + ".enc.tmp");
+    try (Statement st = plainConn.createStatement()) {
+        st.execute("ATTACH DATABASE '" + tmpEnc.toAbsolutePath().toString().replace("'", "''")
+                + "' AS encrypted KEY \"x'" + hex + "'\"");
+        st.execute("SELECT sqlcipher_export('encrypted')");
+        st.execute("DETACH DATABASE encrypted");
+    } catch (SQLException e) {
+        try { java.nio.file.Files.deleteIfExists(tmpEnc); } catch (Exception ignore) {}
+        throw e;
+    }
+    try {
+        var bak = dbPath.resolveSibling(dbPath.getFileName() + ".plain.bak");
+        java.nio.file.Files.deleteIfExists(bak);
+        java.nio.file.Files.move(dbPath, bak);
+        java.nio.file.Files.move(tmpEnc, dbPath);
+    } catch (Exception ioe) {
+        try { java.nio.file.Files.deleteIfExists(tmpEnc); } catch (Exception ignore) {}
+        throw new SQLException("Migration vers base chiffrée échouée : " + ioe.getMessage(), ioe);
+    }
+}
+```
+
+**Effet** :
+
+* Si votre fichier utilisateur avait été créé **en clair** par un run précédent, il sera **automatiquement migré en chiffré** (export SQLCipher) et l’appli démarre.
+* Si le fichier est **corrompu**, il est **mis de côté** et une base **neuve chiffrée** est recréée.
+
+> NB : tout ceci suppose que vous utilisez bien la dépendance SQLite **avec SQLCipher** (ce que montrent vos logs : `io.github.willena/sqlite-jdbc`).
+
+---
+
+## 3) Ordonner le démarrage pour éviter toute requête avant la clé
+
+Dans `MainApp.start(...)`, assurez-vous de **cet ordre exact** (clé → openOrRepair → DAO → migrations → UI) :
+
+```java
+AuthService.Session session = promptLoginLoop(sec).orElseThrow();
+byte[] key = session.key().getEncoded();
+
+// 1) Ouvre (ou répare/migre) la DB utilisateur avec la clé
+userDb = new UserDB(userDbPathString);
+userDb.openOrRepair(key); // <-- applique la clé à chaque connexion + autocorrect NOTADB
+
+// 2) (si politique de rekey : à faire MAINTENANT, puis re-open)
+if (needRekey) {
+    userDb.close();
+    // ... votre rekey (WAL OFF -> PRAGMA rekey -> WAL ON) ...
+    userDb.openOrRepair(newKey);
+    key = newKey;
+}
+
+// 3) Crée le DAO APRÈS l’ouverture
+dao = new SecureDB(userDb::getConnection, session.userId(), session.key());
+
+// 4) Assure le schéma AVANT l’UI
+DbBootstrap.ensureSchema(dao, userDb);
+
+// 5) UI
+launchUI(stage, session.key());
+```
+
+---
+
+## 4) Quick‑win immédiat (si vous voulez juste débloquer maintenant)
+
+Vous êtes en **DEV** et vous n’avez **aucune donnée** à conserver ?
+Supprimez le fichier utilisateur et relancez :
+
+* Chemin sous Windows : `C:\Users\<VotreUser>\.prestataires\<username>.db`
+* Ou renommez‑le : `...\<username>.db.corrupt.<timestamp>`
+
+L’appli recréera une base **neuve chiffrée** au prochain lancement (grâce au point **1** ci‑dessus).
+Mais je vous conseille de **committer** les patchs quand même (pour éviter que ça ne réapparaisse plus tard).
+
+---
+
+## 5) Vérification (checklist)
+
+* **Log** le chemin de la DB au démarrage (vous l’avez ajouté, gardez‑le).
+* Lancez une fois avec `-Dapp.safeUi=true` (pour écarter tout CSS) — maintenant votre problème est **bien DB** (le message l’atteste).
+* Démarrage : plus de `SQLITE_NOTADB`.
+* **Premier run** après migration : `DbBootstrap.ensureSchema(...)` doit créer les tables si absentes (`prestataires`, `services`, `factures`, `mail_prefs`, etc.).
+* Ouvrez l’écran : la **zone centrale** n’est plus vide (au pire elle affiche votre placeholder “Aucun prestataire…”).
+
+---
+
+## 6) Pourquoi l’erreur est apparue **maintenant**
+
+Vous avez récemment :
+
+* ajouté du code **rekey** et modifié l’ordre d’ouverture,
+* parfois créé le fichier **avant** d’appliquer la clé, ce qui fabrique une base **en clair**,
+* et/ou laissé Hikari créer ultérieurement une connexion **sans clé**.
+
+Avec les correctifs ci‑dessus :
+
+* **toutes** les connexions ont la **clé** (via `connectionInitSql`),
+* la **migration** depuis une base **claire** est **automatique**,
+* les fichiers **corrompus** sont isolés sans crasher l’UI,
+* et le schéma est assuré **avant** d’afficher l’interface.
+
+---
+
+## 7) Deux points secondaires vus dans vos logs (non bloquants)
+
+* **Police Inter non trouvée** : assurez‑vous que `src/main/resources/fonts/Inter-Regular.ttf` existe, que votre `<resources>` Maven inclut `**/*.ttf`, et que vos CSS référencent `url("/fonts/Inter-Regular.ttf")`. Sinon, laissez Modena (safe).
+* **SLF4J** : vous avez ajouté `slf4j-simple`, parfait. Pour plus de verbosité en dev : `-Dorg.slf4j.simpleLogger.defaultLogLevel=debug`.
+
+---
+
+### TL;DR (actions à faire)
+
+1. **UserDB** : `openPool(key)` avec `setConnectionInitSql("PRAGMA key = ...")` + test `sqlite_master`.
+2. **UserDB** : `openOrRepair(key)` qui, en cas de `NOTADB`, **tente sans clé** → **migre** le fichier clair → sinon **isole** le fichier corrompu, puis **ré‑ouvre**.
+3. **MainApp** : ordre **clé → openOrRepair → DAO → ensureSchema → UI**.
+4. (Option) Si vous n’avez pas de données : supprimez/renommez la DB utilisateur et relancez.
+
+Appliquez ces patchs ; avec ça, l’erreur **disparaît** et l’écran central réapparaît (au pire vide mais fonctionnel), et **vous ne retomberez plus** sur `SQLITE_NOTADB` au prochain run.
+

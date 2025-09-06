@@ -63,6 +63,11 @@ public final class PDF {
         }
     }
 
+    // Adapter to match prompt.txt naming. Generates a fiche at given path.
+    public static void exportFichePrestataire(Prestataire p, Path file) throws Exception {
+        generateFiche(file, p);
+    }
+
     public static void generateHistorique(Path file, DB dao) throws Exception {
         Files.createDirectories(file.getParent());
         try (Document doc = new Document();

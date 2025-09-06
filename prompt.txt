@@ -1,0 +1,1021 @@
+Parfait : on va **remettre la partie “Gestion des Prestataires” en mode productif**, c’est‑à‑dire :
+
+* **Créer/éditer/supprimer** des prestataires avec **vraie validation** (nom requis, email/téléphone plausibles, unicité du nom).
+* **Voir** immédiatement leurs informations dans le panneau de droite, ainsi que **Services** et **Factures**.
+* **Gérer** services/factures (ajout/édition/suppression, marquer payée) directement depuis l’UI.
+* **Fiabiliser** le pipeline **DB → DAO → UI** (ordre d’ouverture, migrations, erreurs visibles).
+* **Améliorer** l’ergonomie : recherche, raccourcis, double‑clic pour éditer, état en bas de fenêtre, coloration des lignes avec impayés.
+
+Je te donne **les patchs prêts à coller** (JavaFX + SQL) et l’ordre précis pour les intégrer. Tout est **local**, sans nouvelle dépendance.
+
+---
+
+## 0) Vue d’ensemble des changements
+
+1. **DAO (DB.java)**
+   Ajouter les méthodes CRUD manquantes et des **index** pour la recherche :
+
+   * `insertPrestataire(...)`, `updatePrestataire(...)`, `deletePrestataire(id)`
+   * `insertService(...)`, `updateService(...)`, `deleteService(id)`
+   * `insertFacture(...)`, `updateFacture(...)`, `deleteFacture(id)`, `toggleFacturePayee(id, paye)`
+   * **Index** sur `prestataires(nom, email, telephone)`
+
+2. **Formulaires UI (nouveaux Dialogs)**
+
+   * `PrestataireFormDialog` (ajout/édition)
+   * `ServiceFormDialog`
+   * `FactureFormDialog`
+
+3. **MainView**
+
+   * **Brancher** les boutons **Ajouter/Modifier/Supprimer/Exporter** aux Dialogs + DAO.
+   * **Mini‑toolbars** dans les onglets **Services** / **Factures** (Ajout/Modif/Supp, Marquer payée).
+   * **Double‑clic** sur une ligne → modifier.
+   * **Raccourcis** clavier : `Ctrl+N` (nouveau), `Enter` (modifier), `Del` (supprimer), `/` (focus recherche).
+   * **Status bar** (compteurs).
+   * **Coloration** des lignes **avec impayés** (CSS + rowFactory).
+
+4. **Migrations & indices** (idempotent)
+
+   * Création des index si absents.
+   * (Si pas encore fait) migration SQLite **safe** pour `copy_to_self`.
+
+---
+
+## 1) DAO — Ajouts CRUD & Index
+
+> Fichier : `src/main/java/org/example/dao/DB.java`
+> **Ajoute** ces méthodes (adapte les noms des getters si ton modèle diffère très légèrement).
+
+```java
+// --- Prestataires -----------------------------------------------------------
+
+public int insertPrestataire(Prestataire p) {
+    String sql = """
+        INSERT INTO prestataires(nom, societe, telephone, email, note, date_contrat, date_contrat_ts)
+        VALUES(?,?,?,?,?,?,?)
+    """;
+    try (Connection c = getConnection();
+         PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        ps.setString(1, p.getNom());
+        ps.setString(2, p.getSociete());
+        ps.setString(3, p.getTelephone());
+        ps.setString(4, p.getEmail());
+        ps.setInt(5, p.getNote());
+        ps.setString(6, p.getDateContrat());
+        if (p.getDateContratTs() == null) ps.setNull(7, Types.BIGINT);
+        else ps.setLong(7, p.getDateContratTs());
+        ps.executeUpdate();
+        try (ResultSet rs = ps.getGeneratedKeys()) {
+            if (rs.next()) return rs.getInt(1);
+            // SQLite peut ne pas retourner l'id si pas AUTOINCREMENT -> fallback
+            try (Statement s = c.createStatement(); ResultSet r2 = s.executeQuery("SELECT last_insert_rowid()")) {
+                if (r2.next()) return r2.getInt(1);
+            }
+        }
+        throw new SQLException("ID non généré");
+    } catch (SQLException e) {
+        throw translateConstraint(e, "Un prestataire avec ce nom existe déjà.");
+    }
+}
+
+public void updatePrestataire(Prestataire p) {
+    String sql = """
+        UPDATE prestataires SET
+            nom=?, societe=?, telephone=?, email=?, note=?, date_contrat=?, date_contrat_ts=?
+        WHERE id=?
+    """;
+    try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+        ps.setString(1, p.getNom());
+        ps.setString(2, p.getSociete());
+        ps.setString(3, p.getTelephone());
+        ps.setString(4, p.getEmail());
+        ps.setInt(5, p.getNote());
+        ps.setString(6, p.getDateContrat());
+        if (p.getDateContratTs() == null) ps.setNull(7, Types.BIGINT);
+        else ps.setLong(7, p.getDateContratTs());
+        ps.setInt(8, p.getId());
+        if (ps.executeUpdate() != 1) throw new SQLException("Aucune ligne mise à jour");
+    } catch (SQLException e) {
+        throw translateConstraint(e, "Un prestataire avec ce nom existe déjà.");
+    }
+}
+
+public void deletePrestataire(int id) {
+    try (Connection c = getConnection(); PreparedStatement ps =
+            c.prepareStatement("DELETE FROM prestataires WHERE id=?")) {
+        ps.setInt(1, id);
+        ps.executeUpdate();
+    } catch (SQLException e) {
+        throw new RuntimeException(e);
+    }
+}
+
+// --- Services ---------------------------------------------------------------
+
+public int insertService(int prestataireId, ServiceRow s) {
+    String sql = """
+        INSERT INTO services(prestataire_id, description, date, date_ts)
+        VALUES(?,?,?,?)
+    """;
+    try (Connection c = getConnection();
+         PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        ps.setInt(1, prestataireId);
+        ps.setString(2, s.getDescription());
+        ps.setString(3, s.getDate());
+        if (s.getDateTs() == null) ps.setNull(4, Types.BIGINT); else ps.setLong(4, s.getDateTs());
+        ps.executeUpdate();
+        try (ResultSet rs = ps.getGeneratedKeys()) {
+            if (rs.next()) return rs.getInt(1);
+        }
+        try (Statement s2 = c.createStatement(); ResultSet r2 = s2.executeQuery("SELECT last_insert_rowid()")) {
+            if (r2.next()) return r2.getInt(1);
+        }
+        throw new SQLException("ID service non généré");
+    } catch (SQLException e) {
+        throw new RuntimeException(e);
+    }
+}
+
+public void updateService(ServiceRow s) {
+    String sql = "UPDATE services SET description=?, date=?, date_ts=? WHERE id=?";
+    try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+        ps.setString(1, s.getDescription());
+        ps.setString(2, s.getDate());
+        if (s.getDateTs() == null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, s.getDateTs());
+        ps.setInt(4, s.getId());
+        ps.executeUpdate();
+    } catch (SQLException e) {
+        throw new RuntimeException(e);
+    }
+}
+
+public void deleteService(int id) {
+    try (Connection c = getConnection(); PreparedStatement ps =
+            c.prepareStatement("DELETE FROM services WHERE id=?")) {
+        ps.setInt(1, id);
+        ps.executeUpdate();
+    } catch (SQLException e) {
+        throw new RuntimeException(e);
+    }
+}
+
+// --- Factures ---------------------------------------------------------------
+
+public int insertFacture(int prestataireId, Facture f) {
+    String sql = """
+        INSERT INTO factures(prestataire_id, description, echeance, echeance_ts,
+                             montant_ht, tva_pct, montant_tva, montant_ttc, devise, paye, date_paiement, date_paiement_ts, preavis_envoye)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0)
+    """;
+    try (Connection c = getConnection();
+         PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        ps.setInt(1, prestataireId);
+        ps.setString(2, f.getDescription());
+        ps.setString(3, f.getEcheance());
+        if (f.getEcheanceTs() == null) ps.setNull(4, Types.BIGINT); else ps.setLong(4, f.getEcheanceTs());
+        ps.setBigDecimal(5, f.getMontantHt());
+        ps.setBigDecimal(6, f.getTvaPct());
+        ps.setBigDecimal(7, f.getMontantTva());
+        ps.setBigDecimal(8, f.getMontantTtc());
+        ps.setString(9, f.getDevise() == null ? "EUR" : f.getDevise());
+        ps.setInt(10, f.isPaye() ? 1 : 0);
+        ps.setString(11, f.getDatePaiement());
+        if (f.getDatePaiementTs() == null) ps.setNull(12, Types.BIGINT); else ps.setLong(12, f.getDatePaiementTs());
+        ps.executeUpdate();
+        try (ResultSet rs = ps.getGeneratedKeys()) { if (rs.next()) return rs.getInt(1); }
+        try (Statement s2 = c.createStatement(); ResultSet r2 = s2.executeQuery("SELECT last_insert_rowid()")) {
+            if (r2.next()) return r2.getInt(1);
+        }
+        throw new SQLException("ID facture non généré");
+    } catch (SQLException e) { throw new RuntimeException(e); }
+}
+
+public void updateFacture(Facture f) {
+    String sql = """
+        UPDATE factures SET description=?, echeance=?, echeance_ts=?,
+               montant_ht=?, tva_pct=?, montant_tva=?, montant_ttc=?, devise=?,
+               paye=?, date_paiement=?, date_paiement_ts=?
+        WHERE id=?
+    """;
+    try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+        ps.setString(1, f.getDescription());
+        ps.setString(2, f.getEcheance());
+        if (f.getEcheanceTs() == null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, f.getEcheanceTs());
+        ps.setBigDecimal(4, f.getMontantHt());
+        ps.setBigDecimal(5, f.getTvaPct());
+        ps.setBigDecimal(6, f.getMontantTva());
+        ps.setBigDecimal(7, f.getMontantTtc());
+        ps.setString(8, f.getDevise() == null ? "EUR" : f.getDevise());
+        ps.setInt(9, f.isPaye() ? 1 : 0);
+        ps.setString(10, f.getDatePaiement());
+        if (f.getDatePaiementTs() == null) ps.setNull(11, Types.BIGINT); else ps.setLong(11, f.getDatePaiementTs());
+        ps.setInt(12, f.getId());
+        ps.executeUpdate();
+    } catch (SQLException e) { throw new RuntimeException(e); }
+}
+
+public void deleteFacture(int id) {
+    try (Connection c = getConnection(); PreparedStatement ps =
+            c.prepareStatement("DELETE FROM factures WHERE id=?")) {
+        ps.setInt(1, id);
+        ps.executeUpdate();
+    } catch (SQLException e) { throw new RuntimeException(e); }
+}
+
+public void toggleFacturePayee(int id, boolean payee, Long datePaiementTs, String datePaiementFr) {
+    String sql = "UPDATE factures SET paye=?, date_paiement=?, date_paiement_ts=? WHERE id=?";
+    try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+        ps.setInt(1, payee ? 1 : 0);
+        if (payee) {
+            ps.setString(2, datePaiementFr);
+            if (datePaiementTs == null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, datePaiementTs);
+        } else {
+            ps.setNull(2, Types.VARCHAR);
+            ps.setNull(3, Types.BIGINT);
+        }
+        ps.setInt(4, id);
+        ps.executeUpdate();
+    } catch (SQLException e) { throw new RuntimeException(e); }
+}
+
+// --- Index pour recherche (à appeler dans ensureSchema) ---------------------
+
+public void ensureIndexes(Connection c) throws SQLException {
+    try (Statement st = c.createStatement()) {
+        st.execute("CREATE INDEX IF NOT EXISTS idx_prestataires_nom ON prestataires(nom)");
+        st.execute("CREATE INDEX IF NOT EXISTS idx_prestataires_mail ON prestataires(email)");
+        st.execute("CREATE INDEX IF NOT EXISTS idx_prestataires_tel ON prestataires(telephone)");
+    }
+}
+
+// --- Util : traduction message contrainte unique ----------------------------
+
+private RuntimeException translateConstraint(SQLException e, String friendly) {
+    String m = e.getMessage();
+    if (m != null && (m.contains("UNIQUE") || m.contains("unique"))) {
+        return new IllegalArgumentException(friendly);
+    }
+    return new RuntimeException(e);
+}
+```
+
+> **Où appeler `ensureIndexes` ?** Dans ta routine d’initialisation `DbBootstrap.ensureSchema(...)` (cf. § 4), juste après la création des tables.
+
+---
+
+## 2) Dialogs — Formulaires d’édition
+
+### 2.1. Prestataire (ajout/édition)
+
+> Fichier : `src/main/java/org/example/gui/PrestataireFormDialog.java`
+
+```java
+package org.example.gui;
+
+import javafx.geometry.Insets;
+import javafx.scene.Node;
+import javafx.scene.control.*;
+import javafx.scene.layout.GridPane;
+import javafx.util.StringConverter;
+import org.example.model.Prestataire;
+
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Objects;
+import java.util.regex.Pattern;
+
+public final class PrestataireFormDialog extends Dialog<Prestataire> {
+    private final TextField tfNom = new TextField();
+    private final TextField tfSoc = new TextField();
+    private final TextField tfTel = new TextField();
+    private final TextField tfMail = new TextField();
+    private final Slider slNote = new Slider(0, 100, 70);
+    private final Label lbNote = new Label("70");
+    private final DatePicker dpContrat = new DatePicker();
+
+    private final Label err = new Label();
+
+    public PrestataireFormDialog(Prestataire base) {
+        setTitle(base == null ? "Nouveau prestataire" : "Modifier le prestataire");
+        getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        GridPane g = new GridPane();
+        g.setVgap(8); g.setHgap(8); g.setPadding(new Insets(12));
+
+        int r = 0;
+        g.add(new Label("Nom *"), 0, r); g.add(tfNom, 1, r++);
+        g.add(new Label("Société"), 0, r); g.add(tfSoc, 1, r++);
+        g.add(new Label("Téléphone"), 0, r); g.add(tfTel, 1, r++);
+        g.add(new Label("Email"), 0, r); g.add(tfMail, 1, r++);
+        g.add(new Label("Note"), 0, r);
+        slNote.setShowTickMarks(true); slNote.setMajorTickUnit(20);
+        slNote.valueProperty().addListener((o, ov, nv) -> lbNote.setText(Integer.toString(nv.intValue())));
+        g.add(new HBox(8, slNote, lbNote), 1, r++);
+        g.add(new Label("Contrat (date)"), 0, r); g.add(dpContrat, 1, r++);
+        err.getStyleClass().add("error"); g.add(err, 0, r, 2, 1);
+
+        getDialogPane().setContent(g);
+
+        if (base != null) {
+            tfNom.setText(Objects.toString(base.getNom(), ""));
+            tfSoc.setText(Objects.toString(base.getSociete(), ""));
+            tfTel.setText(Objects.toString(base.getTelephone(), ""));
+            tfMail.setText(Objects.toString(base.getEmail(), ""));
+            slNote.setValue(base.getNote());
+            if (base.getDateContrat() != null && !base.getDateContrat().isBlank()) {
+                dpContrat.setValue(LocalDate.parse(base.getDateContrat(), java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+            }
+        }
+
+        Node ok = getDialogPane().lookupButton(ButtonType.OK);
+        ok.addEventFilter(javafx.event.ActionEvent.ACTION, evt -> {
+            String msg = validate(tfNom.getText(), tfMail.getText(), tfTel.getText());
+            if (msg != null) {
+                err.setText(msg);
+                evt.consume();
+            }
+        });
+
+        setResultConverter(bt -> {
+            if (bt != ButtonType.OK) return null;
+            Prestataire p = base != null ? base : new Prestataire();
+            p.setNom(tfNom.getText().trim());
+            p.setSociete(emptyToNull(tfSoc.getText()));
+            p.setTelephone(emptyToNull(tfTel.getText()));
+            p.setEmail(emptyToNull(tfMail.getText()));
+            p.setNote((int) slNote.getValue());
+            if (dpContrat.getValue() != null) {
+                var ld = dpContrat.getValue();
+                var fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                p.setDateContrat(ld.format(fmt));
+                p.setDateContratTs(ld.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli());
+            } else {
+                p.setDateContrat(null); p.setDateContratTs(null);
+            }
+            return p;
+        });
+    }
+
+    private static String emptyToNull(String s) { s = s == null ? null : s.trim(); return (s == null || s.isEmpty()) ? null : s; }
+
+    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+    private static final Pattern PHONE = Pattern.compile("^[0-9+().\\s-]{6,}$");
+
+    private String validate(String nom, String mail, String tel) {
+        if (nom == null || nom.isBlank()) return "Le nom est obligatoire.";
+        if (mail != null && !mail.isBlank() && !EMAIL.matcher(mail).matches()) return "Email invalide.";
+        if (tel != null && !tel.isBlank() && !PHONE.matcher(tel).matches()) return "Téléphone invalide.";
+        return null;
+    }
+}
+```
+
+### 2.2. Service
+
+> Fichier : `src/main/java/org/example/gui/ServiceFormDialog.java`
+
+```java
+package org.example.gui;
+
+import javafx.geometry.Insets;
+import javafx.scene.control.*;
+import javafx.scene.layout.GridPane;
+import org.example.model.ServiceRow;
+
+import java.time.ZoneId;
+
+public final class ServiceFormDialog extends Dialog<ServiceRow> {
+    private final DatePicker dpDate = new DatePicker();
+    private final TextArea taDesc = new TextArea();
+    private final Label err = new Label();
+
+    public ServiceFormDialog(ServiceRow base) {
+        setTitle(base == null ? "Nouveau service" : "Modifier le service");
+        getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        GridPane g = new GridPane(); g.setPadding(new Insets(12)); g.setHgap(8); g.setVgap(8);
+        g.add(new Label("Date"), 0, 0); g.add(dpDate, 1, 0);
+        g.add(new Label("Description *"), 0, 1); taDesc.setPrefRowCount(5); g.add(taDesc, 1, 1);
+        err.getStyleClass().add("error"); g.add(err, 0, 2, 2, 1);
+        getDialogPane().setContent(g);
+
+        if (base != null) {
+            taDesc.setText(base.getDescription());
+            if (base.getDateTs() != null) {
+                var ld = java.time.Instant.ofEpochMilli(base.getDateTs()).atZone(ZoneId.systemDefault()).toLocalDate();
+                dpDate.setValue(ld);
+            }
+        }
+
+        Node ok = getDialogPane().lookupButton(ButtonType.OK);
+        ok.addEventFilter(javafx.event.ActionEvent.ACTION, evt -> {
+            if (taDesc.getText() == null || taDesc.getText().trim().isEmpty()) {
+                err.setText("La description est obligatoire."); evt.consume();
+            }
+        });
+
+        setResultConverter(bt -> {
+            if (bt != ButtonType.OK) return null;
+            ServiceRow s = base != null ? base : new ServiceRow();
+            s.setDescription(taDesc.getText().trim());
+            if (dpDate.getValue() != null) {
+                var ld = dpDate.getValue();
+                var fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                s.setDate(ld.format(fmt));
+                s.setDateTs(ld.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli());
+            } else {
+                s.setDate(null); s.setDateTs(null);
+            }
+            return s;
+        });
+    }
+}
+```
+
+### 2.3. Facture
+
+> Fichier : `src/main/java/org/example/gui/FactureFormDialog.java`
+
+```java
+package org.example.gui;
+
+import javafx.geometry.Insets;
+import javafx.scene.control.*;
+import javafx.scene.layout.GridPane;
+import org.example.model.Facture;
+
+import java.math.BigDecimal;
+import java.time.ZoneId;
+
+public final class FactureFormDialog extends Dialog<Facture> {
+    private final TextField tfDesc = new TextField();
+    private final DatePicker dpEcheance = new DatePicker();
+    private final TextField tfMontantHt = new TextField();
+    private final Spinner<Double> spTva = new Spinner<>(0.0, 100.0, 20.0, 0.5);
+    private final CheckBox cbPayee = new CheckBox("Facture payée");
+    private final DatePicker dpPaiement = new DatePicker();
+    private final Label err = new Label();
+
+    public FactureFormDialog(Facture base) {
+        setTitle(base == null ? "Nouvelle facture" : "Modifier la facture");
+        getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        GridPane g = new GridPane(); g.setPadding(new Insets(12)); g.setHgap(8); g.setVgap(8);
+
+        int r=0;
+        g.add(new Label("Description *"), 0, r); g.add(tfDesc, 1, r++);
+        g.add(new Label("Échéance"), 0, r); g.add(dpEcheance, 1, r++);
+        g.add(new Label("Montant HT (€) *"), 0, r); g.add(tfMontantHt, 1, r++);
+        g.add(new Label("TVA (%)"), 0, r); g.add(spTva, 1, r++);
+        g.add(cbPayee, 1, r++);
+        g.add(new Label("Paiement le"), 0, r); g.add(dpPaiement, 1, r++);
+        err.getStyleClass().add("error"); g.add(err, 0, r, 2, 1);
+
+        cbPayee.selectedProperty().addListener((o,ov,nv)-> dpPaiement.setDisable(!nv));
+        dpPaiement.setDisable(true);
+
+        if (base != null) {
+            tfDesc.setText(base.getDescription());
+            if (base.getEcheanceTs() != null) {
+                var ld = java.time.Instant.ofEpochMilli(base.getEcheanceTs()).atZone(ZoneId.systemDefault()).toLocalDate();
+                dpEcheance.setValue(ld);
+            }
+            tfMontantHt.setText(base.getMontantHt() == null ? "" : base.getMontantHt().toPlainString());
+            spTva.getValueFactory().setValue(base.getTvaPct() == null ? 20.0 : base.getTvaPct().doubleValue());
+            cbPayee.setSelected(base.isPaye());
+            if (base.getDatePaiementTs() != null) {
+                var ld = java.time.Instant.ofEpochMilli(base.getDatePaiementTs()).atZone(ZoneId.systemDefault()).toLocalDate();
+                dpPaiement.setValue(ld); dpPaiement.setDisable(false);
+            }
+        }
+
+        Node ok = getDialogPane().lookupButton(ButtonType.OK);
+        ok.addEventFilter(javafx.event.ActionEvent.ACTION, evt -> {
+            if (tfDesc.getText().trim().isEmpty()) { err.setText("La description est obligatoire."); evt.consume(); return; }
+            try { new BigDecimal(tfMontantHt.getText().trim().replace(',', '.')); }
+            catch (Exception ex) { err.setText("Montant HT invalide."); evt.consume(); }
+        });
+
+        setResultConverter(bt -> {
+            if (bt != ButtonType.OK) return null;
+            Facture f = base != null ? base : new Facture();
+            f.setDescription(tfDesc.getText().trim());
+            if (dpEcheance.getValue() != null) {
+                var ld = dpEcheance.getValue();
+                var fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                f.setEcheance(ld.format(fmt));
+                f.setEcheanceTs(ld.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli());
+            } else { f.setEcheance(null); f.setEcheanceTs(null); }
+            BigDecimal ht = new BigDecimal(tfMontantHt.getText().trim().replace(',', '.'));
+            BigDecimal tva = BigDecimal.valueOf(spTva.getValue());
+            BigDecimal mtva = ht.multiply(tva).divide(BigDecimal.valueOf(100));
+            BigDecimal ttc = ht.add(mtva);
+            f.setMontantHt(ht); f.setTvaPct(tva); f.setMontantTva(mtva); f.setMontantTtc(ttc);
+            f.setDevise("EUR");
+            f.setPaye(cbPayee.isSelected());
+            if (cbPayee.isSelected() && dpPaiement.getValue()!=null) {
+                var ld = dpPaiement.getValue();
+                var fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                f.setDatePaiement(ld.format(fmt));
+                f.setDatePaiementTs(ld.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli());
+            } else { f.setDatePaiement(null); f.setDatePaiementTs(null); }
+            return f;
+        });
+    }
+}
+```
+
+---
+
+## 3) MainView — brancher les actions (Prestataire + Services + Factures)
+
+> Fichier : `src/main/java/org/example/gui/MainView.java`
+> **Remplace** complètement les handlers vierges `onAdd() / onEdit() / onDelete()` et **ajoute** des handlers dans les onglets **Services** et **Factures**.
+
+### 3.1. Boutons Prestataire (en haut)
+
+```java
+private void onAdd() {
+    PrestataireFormDialog dlg = new PrestataireFormDialog(null);
+    ThemeManager.apply(dlg);
+    var res = dlg.showAndWait();
+    if (res.isEmpty()) return;
+    Prestataire p = res.get();
+    exec.submit(() -> {
+        try {
+            int id = dao.insertPrestataire(p);
+            p.setId(id);
+            Platform.runLater(() -> {
+                items.add(p);
+                table.getSelectionModel().select(p);
+            });
+        } catch (Exception ex) {
+            Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, ex.getMessage()).showAndWait());
+        }
+    });
+}
+
+private void onEdit() {
+    Prestataire sel = table.getSelectionModel().getSelectedItem();
+    if (sel == null) return;
+    Prestataire snapshot = clonePrestataire(sel);
+    PrestataireFormDialog dlg = new PrestataireFormDialog(snapshot);
+    ThemeManager.apply(dlg);
+    var res = dlg.showAndWait();
+    if (res.isEmpty()) return;
+    Prestataire edited = res.get();
+    edited.setId(sel.getId());
+    exec.submit(() -> {
+        try {
+            dao.updatePrestataire(edited);
+            Platform.runLater(() -> {
+                // remplace l’objet observable (pour rafraichir les colonnes bindées)
+                int idx = items.indexOf(sel);
+                items.set(idx, edited);
+                table.getSelectionModel().select(edited);
+            });
+        } catch (Exception ex) {
+            Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, ex.getMessage()).showAndWait());
+        }
+    });
+}
+
+private void onDelete() {
+    Prestataire sel = table.getSelectionModel().getSelectedItem();
+    if (sel == null) return;
+    Alert conf = new Alert(Alert.AlertType.CONFIRMATION,
+            "Supprimer " + sel.getNom() + " et ses données associées ?", ButtonType.YES, ButtonType.NO);
+    ThemeManager.apply(conf);
+    if (conf.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return;
+
+    exec.submit(() -> {
+        try {
+            dao.deletePrestataire(sel.getId());
+            Platform.runLater(() -> {
+                items.remove(sel);
+                clearDetails();
+            });
+        } catch (Exception ex) {
+            Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, ex.getMessage()).showAndWait());
+        }
+    });
+}
+
+private static Prestataire clonePrestataire(Prestataire p) {
+    Prestataire c = new Prestataire();
+    c.setId(p.getId());
+    c.setNom(p.getNom());
+    c.setSociete(p.getSociete());
+    c.setTelephone(p.getTelephone());
+    c.setEmail(p.getEmail());
+    c.setNote(p.getNote());
+    c.setDateContrat(p.getDateContrat());
+    c.setDateContratTs(p.getDateContratTs());
+    return c;
+}
+```
+
+### 3.2. Raccourcis et double‑clic
+
+Dans `buildPrestatairesTable()` **après** `table.getColumns().setAll(...)` :
+
+```java
+// Double clic -> modifier
+table.setRowFactory(tv -> {
+    TableRow<Prestataire> row = new TableRow<>();
+    row.setOnMouseClicked(e -> {
+        if (e.getClickCount() == 2 && !row.isEmpty()) onEdit();
+    });
+    // Coloration des impayés (voir CSS §5)
+    javafx.css.PseudoClass UNPAID = javafx.css.PseudoClass.getPseudoClass("unpaid");
+    row.itemProperty().addListener((ob, ov, nv) -> {
+        boolean unpaid = nv != null && nv.getImpayes() > 0;
+        row.pseudoClassStateChanged(UNPAID, unpaid);
+    });
+    return row;
+});
+
+// Raccourcis
+table.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> {
+    if (e.isControlDown() && e.getCode() == KeyCode.N) { onAdd(); e.consume(); }
+    else if (e.getCode() == KeyCode.ENTER) { onEdit(); e.consume(); }
+    else if (e.getCode() == KeyCode.DELETE) { onDelete(); e.consume(); }
+});
+root.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> {
+    if (e.getText().equals("/")) { tfSearch.requestFocus(); e.consume(); }
+});
+```
+
+### 3.3. Toolbars Services/Factures
+
+Dans `buildDetailsPanel()`, **au lieu** de mettre directement `tvServices` et `tvFactures` dans les tabs, on ajoute une barre d’actions au‑dessus :
+
+```java
+// --- Services toolbar ---
+Button bAddSrv = new Button("Ajouter");
+Button bEditSrv = new Button("Modifier");
+Button bDelSrv = new Button("Supprimer");
+HBox barSrv = new HBox(8, bAddSrv, bEditSrv, bDelSrv);
+barSrv.setPadding(new Insets(6,6,6,6));
+VBox boxSrv = new VBox(barSrv, tvServices);
+VBox.setVgrow(tvServices, Priority.ALWAYS);
+
+// --- Factures toolbar ---
+Button bAddFac = new Button("Ajouter");
+Button bEditFac = new Button("Modifier");
+Button bDelFac = new Button("Supprimer");
+Button bPayFac = new Button("Marquer payée");
+HBox barFac = new HBox(8, bAddFac, bEditFac, bDelFac, new Separator(), bPayFac);
+barFac.setPadding(new Insets(6,6,6,6));
+VBox boxFac = new VBox(barFac, tvFactures);
+VBox.setVgrow(tvFactures, Priority.ALWAYS);
+
+Tab tSrv   = new Tab("Services", boxSrv);   tSrv.setClosable(false);
+Tab tFac   = new Tab("Factures", boxFac);   tFac.setClosable(false);
+```
+
+Et **les handlers** (après `buildDetailsPanel()`, par ex. dans `showDetails(p)` quand `p != null`) :
+
+```java
+// Services handlers
+bAddSrv.setOnAction(e -> {
+    ServiceFormDialog dlg = new ServiceFormDialog(null);
+    ThemeManager.apply(dlg);
+    var res = dlg.showAndWait(); if (res.isEmpty()) return;
+    ServiceRow s = res.get();
+    exec.submit(() -> {
+        try {
+            int id = dao.insertService(p.getId(), s);
+            s.setId(id);
+            Platform.runLater(() -> tvServices.getItems().add(s));
+        } catch (Exception ex) { Platform.runLater(() -> alertError(ex)); }
+    });
+});
+
+bEditSrv.setOnAction(e -> {
+    ServiceRow sel = tvServices.getSelectionModel().getSelectedItem();
+    if (sel == null) return;
+    ServiceFormDialog dlg = new ServiceFormDialog(copyService(sel));
+    ThemeManager.apply(dlg);
+    var res = dlg.showAndWait(); if (res.isEmpty()) return;
+    ServiceRow edited = res.get(); edited.setId(sel.getId());
+    exec.submit(() -> {
+        try { dao.updateService(edited); Platform.runLater(() -> replace(tvServices, sel, edited)); }
+        catch (Exception ex) { Platform.runLater(() -> alertError(ex)); }
+    });
+});
+
+bDelSrv.setOnAction(e -> {
+    ServiceRow sel = tvServices.getSelectionModel().getSelectedItem();
+    if (sel == null) return;
+    if (confirm("Supprimer ce service ?")) {
+        exec.submit(() -> {
+            try { dao.deleteService(sel.getId()); Platform.runLater(() -> tvServices.getItems().remove(sel)); }
+            catch (Exception ex) { Platform.runLater(() -> alertError(ex)); }
+        });
+    }
+});
+
+// Factures handlers
+bAddFac.setOnAction(e -> {
+    FactureFormDialog dlg = new FactureFormDialog(null);
+    ThemeManager.apply(dlg);
+    var res = dlg.showAndWait(); if (res.isEmpty()) return;
+    Facture f = res.get();
+    exec.submit(() -> {
+        try { int id = dao.insertFacture(p.getId(), f); f.setId(id);
+            Platform.runLater(() -> tvFactures.getItems().add(f)); }
+        catch (Exception ex) { Platform.runLater(() -> alertError(ex)); }
+    });
+});
+
+bEditFac.setOnAction(e -> {
+    Facture sel = tvFactures.getSelectionModel().getSelectedItem(); if (sel == null) return;
+    FactureFormDialog dlg = new FactureFormDialog(copyFacture(sel)); ThemeManager.apply(dlg);
+    var res = dlg.showAndWait(); if (res.isEmpty()) return;
+    Facture edited = res.get(); edited.setId(sel.getId());
+    exec.submit(() -> {
+        try { dao.updateFacture(edited); Platform.runLater(() -> replace(tvFactures, sel, edited)); }
+        catch (Exception ex) { Platform.runLater(() -> alertError(ex)); }
+    });
+});
+
+bDelFac.setOnAction(e -> {
+    Facture sel = tvFactures.getSelectionModel().getSelectedItem(); if (sel == null) return;
+    if (confirm("Supprimer cette facture ?")) {
+        exec.submit(() -> {
+            try { dao.deleteFacture(sel.getId()); Platform.runLater(() -> tvFactures.getItems().remove(sel)); }
+            catch (Exception ex) { Platform.runLater(() -> alertError(ex)); }
+        });
+    }
+});
+
+bPayFac.setOnAction(e -> {
+    Facture sel = tvFactures.getSelectionModel().getSelectedItem(); if (sel == null) return;
+    boolean nv = !sel.isPaye();
+    Long ts = nv ? System.currentTimeMillis() : null;
+    String fr = nv ? java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) : null;
+    exec.submit(() -> {
+        try { dao.toggleFacturePayee(sel.getId(), nv, ts, fr);
+            Platform.runLater(() -> { sel.setPaye(nv); sel.setDatePaiement(fr); sel.setDatePaiementTs(ts); tvFactures.refresh(); }); }
+        catch (Exception ex) { Platform.runLater(() -> alertError(ex)); }
+    });
+});
+```
+
+**Helpers** à ajouter dans `MainView` :
+
+```java
+private static void replace(TableView<?> tv, Object old, Object neu) {
+    @SuppressWarnings("unchecked")
+    var list = (java.util.List<Object>) tv.getItems();
+    int i = list.indexOf(old); if (i >= 0) list.set(i, neu);
+}
+
+private static ServiceRow copyService(ServiceRow s) {
+    ServiceRow c = new ServiceRow();
+    c.setId(s.getId()); c.setDescription(s.getDescription());
+    c.setDate(s.getDate()); c.setDateTs(s.getDateTs()); return c;
+}
+private static Facture copyFacture(Facture f) {
+    Facture c = new Facture();
+    c.setId(f.getId()); c.setDescription(f.getDescription());
+    c.setEcheance(f.getEcheance()); c.setEcheanceTs(f.getEcheanceTs());
+    c.setMontantHt(f.getMontantHt()); c.setTvaPct(f.getTvaPct());
+    c.setMontantTva(f.getMontantTva()); c.setMontantTtc(f.getMontantTtc());
+    c.setDevise(f.getDevise()); c.setPaye(f.isPaye());
+    c.setDatePaiement(f.getDatePaiement()); c.setDatePaiementTs(f.getDatePaiementTs());
+    return c;
+}
+
+private boolean confirm(String msg) {
+    Alert a = new Alert(Alert.AlertType.CONFIRMATION, msg, ButtonType.YES, ButtonType.NO);
+    ThemeManager.apply(a);
+    return a.showAndWait().orElse(ButtonType.NO) == ButtonType.YES;
+}
+private void alertError(Exception ex) {
+    new Alert(Alert.AlertType.ERROR, ex.getMessage()).showAndWait();
+}
+```
+
+### 3.4. Status‑bar (compteurs) — bas de fenêtre
+
+Dans `buildCenter()` après avoir créé le `SplitPane`, ajoute une **barre d’état** au `root.setBottom(...)` :
+
+```java
+Label lbCount = new Label();
+Label lbUnpaid = new Label();
+HBox status = new HBox(16, lbCount, lbUnpaid);
+status.setPadding(new Insets(6,6,6,6));
+
+items.addListener((javafx.collections.ListChangeListener<? super Prestataire>) ch -> updateStatus(lbCount, lbUnpaid));
+table.getItems().addListener((javafx.collections.ListChangeListener<? super Prestataire>) ch -> updateStatus(lbCount, lbUnpaid));
+updateStatus(lbCount, lbUnpaid);
+
+root.setBottom(status);
+```
+
+Et :
+
+```java
+private void updateStatus(Label lbCount, Label lbUnpaid) {
+    int n = items.size();
+    int u = items.stream().mapToInt(Prestataire::getImpayes).sum();
+    lbCount.setText(n + " prestataire(s)");
+    lbUnpaid.setText(u + " facture(s) impayée(s) (toutes lignes)");
+}
+```
+
+---
+
+## 4) Bootstrap DB / Migrations / Index
+
+Assure‑toi d’avoir une routine **idempotente** appelée **avant l’UI** (dans `MainApp`, juste après la création du DAO).
+
+> Fichier : `src/main/java/org/example/dao/DbBootstrap.java` (si pas encore créé)
+
+```java
+public final class DbBootstrap {
+    public static void ensureSchema(DB dao, UserDB userDb) {
+        try (Connection c = userDb.getConnection(); Statement st = c.createStatement()) {
+            st.execute("PRAGMA foreign_keys=ON");
+            st.execute("PRAGMA busy_timeout=5000");
+
+            st.execute("""
+                CREATE TABLE IF NOT EXISTS prestataires(
+                  id INTEGER PRIMARY KEY,
+                  nom TEXT NOT NULL UNIQUE,
+                  societe TEXT, telephone TEXT, email TEXT,
+                  note INTEGER DEFAULT 0,
+                  facturation TEXT,
+                  date_contrat TEXT, date_contrat_ts INTEGER
+                )
+            """);
+            st.execute("""
+                CREATE TABLE IF NOT EXISTS services(
+                  id INTEGER PRIMARY KEY,
+                  prestataire_id INTEGER NOT NULL,
+                  description TEXT,
+                  date TEXT, date_ts INTEGER,
+                  FOREIGN KEY(prestataire_id) REFERENCES prestataires(id) ON DELETE CASCADE
+                )
+            """);
+            st.execute("""
+                CREATE TABLE IF NOT EXISTS factures(
+                  id INTEGER PRIMARY KEY,
+                  prestataire_id INTEGER NOT NULL,
+                  description TEXT,
+                  echeance TEXT, echeance_ts INTEGER,
+                  montant_ht REAL, tva_pct REAL DEFAULT 20,
+                  montant_tva REAL, montant_ttc REAL,
+                  devise TEXT DEFAULT 'EUR',
+                  paye INTEGER DEFAULT 0,
+                  date_paiement TEXT, date_paiement_ts INTEGER,
+                  preavis_envoye INTEGER DEFAULT 0,
+                  FOREIGN KEY(prestataire_id) REFERENCES prestataires(id) ON DELETE CASCADE
+                )
+            """);
+            st.execute("""
+                CREATE TABLE IF NOT EXISTS mail_prefs(
+                  id INTEGER PRIMARY KEY CHECK (id=1),
+                  host TEXT, port INTEGER, ssl INTEGER,
+                  user TEXT, pwd TEXT,
+                  provider TEXT,
+                  oauth_client TEXT, oauth_refresh TEXT, oauth_expiry INTEGER,
+                  from_addr TEXT,
+                  copy_to_self TEXT,
+                  delay_hours INTEGER,
+                  style TEXT,
+                  subj_tpl_presta TEXT, body_tpl_presta TEXT,
+                  subj_tpl_self TEXT,  body_tpl_self TEXT
+                )
+            """);
+
+            // migration SQLite-safe pour NOT NULL / DEFAULT '' sur copy_to_self
+            try {
+                st.executeUpdate("UPDATE mail_prefs SET copy_to_self='' WHERE copy_to_self IS NULL");
+                st.execute("""
+                    CREATE TABLE IF NOT EXISTS mail_prefs_new(
+                      id INTEGER PRIMARY KEY CHECK (id=1),
+                      host TEXT, port INTEGER, ssl INTEGER,
+                      user TEXT, pwd TEXT,
+                      provider TEXT,
+                      oauth_client TEXT, oauth_refresh TEXT, oauth_expiry INTEGER,
+                      from_addr TEXT,
+                      copy_to_self TEXT NOT NULL DEFAULT '',
+                      delay_hours INTEGER,
+                      style TEXT,
+                      subj_tpl_presta TEXT, body_tpl_presta TEXT,
+                      subj_tpl_self TEXT,  body_tpl_self TEXT
+                    )
+                """);
+                st.execute("""
+                    INSERT OR REPLACE INTO mail_prefs_new
+                    SELECT id, host, port, ssl, user, pwd, provider,
+                           oauth_client, oauth_refresh, oauth_expiry,
+                           from_addr, COALESCE(copy_to_self,''), delay_hours, style,
+                           subj_tpl_presta, body_tpl_presta, subj_tpl_self, body_tpl_self
+                    FROM mail_prefs
+                """);
+                st.execute("DROP TABLE mail_prefs");
+                st.execute("ALTER TABLE mail_prefs_new RENAME TO mail_prefs");
+            } catch (SQLException ignore) {}
+
+            // Index
+            dao.ensureIndexes(c);
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Init DB/migrations: " + e.getMessage(), e);
+        }
+    }
+}
+```
+
+---
+
+## 5) CSS — rendre visibles les en‑têtes & surligner impayés
+
+> Fichier : `src/main/resources/css/dark.css` (ou ton thème principal)
+
+```css
+/* En-têtes de colonnes bien visibles */
+.table-view .column-header-background {
+    -fx-background-color: derive(-fx-base, 8%);
+    -fx-border-color: derive(-fx-base, -20%);
+    -fx-border-width: 0 0 1 0;
+}
+.table-view .column-header, .table-view .filler {
+    -fx-size: 28px;
+    -fx-background-color: transparent;
+}
+.table-view .column-header .label {
+    -fx-text-fill: -fx-text-background-color;
+    -fx-font-weight: bold;
+}
+
+/* Lignes avec impayés (pseudo-class définie en rowFactory) */
+.table-row-cell:unpaid {
+    -fx-background-color: rgba(255,165,0,0.08);
+}
+```
+
+> Astuce : garde le *safe‑mode* possible via `-Dapp.safeUi=true` (tu enlèves tes styles pour isoler un souci CSS instantanément).
+
+---
+
+## 6) Tests fonctionnels manuels (5 minutes)
+
+1. **Créer un prestataire**
+
+   * `Ctrl+N` → saisis Nom (obligatoire), Société, Email, Téléphone, Note, Contrat.
+   * Valider → la ligne apparaît, détails à droite remplis.
+
+2. **Modifier**
+
+   * Double‑clic sur la ligne → change l’email → valider → la table se met à jour.
+   * Essaye de donner un **nom déjà existant** → le dialog **reste ouvert** et affiche **“Un prestataire avec ce nom existe déjà.”**.
+
+3. **Supprimer**
+
+   * Sélectionne la ligne → `Supprimer` → confirme → la ligne disparaît, fiche vide.
+
+4. **Services** (dans l’onglet)
+
+   * `Ajouter` → mets une description → valider → une ligne apparaît.
+   * `Modifier` → change la date/description → OK.
+   * `Supprimer` → confirme → la ligne disparaît.
+
+5. **Factures**
+
+   * `Ajouter` → description + montant HT + TVA → OK → nouvelle ligne avec TTC calculé.
+   * `Marquer payée` → repasse à non payée → OK.
+   * Si **impayée**, la ligne du prestataire est **légèrement surlignée** (orange pâle).
+
+6. **Recherche**
+
+   * Tape un bout de **nom, société, email, téléphone** → filtrage sous 250 ms.
+   * `Esc` dans le champ → efface, `Enter` → force le rechargement.
+
+7. **Status bar**
+
+   * Les **compteurs** (prestataires, impayés) se mettent à jour au fil des opérations.
+
+---
+
+## 7) Checklist “À faire maintenant”
+
+* [ ] **DB.java** : coller les méthodes CRUD et `ensureIndexes(...)`.
+* [ ] **PrestataireFormDialog.java**, **ServiceFormDialog.java**, **FactureFormDialog.java** : créer ces 3 fichiers.
+* [ ] **MainView\.java** : remplacer les handlers `onAdd/onEdit/onDelete`, ajouter rowFactory + raccourcis, toolbars Services/Factures et handlers correspondants, status‑bar.
+* [ ] **DbBootstrap.ensureSchema(...)** : s’assurer qu’elle est **appelée avant l’UI** et qu’elle appelle `dao.ensureIndexes(c)`.
+* [ ] **CSS** : patch en‑têtes + `.table-row-cell:unpaid`.
+* [ ] **Vérifier** en lançant : créer, modifier, supprimer, ajouter service/facture, marquer payée, rechercher.
+
+> Si tu veux aussi **importer en masse** (CSV) et **exporter** (CSV/Excel) la liste, je peux te fournir un petit lecteur CSV (sans dépendance) et deux boutons **Importer/Exporter** sur la toolbar – c’est très rapide à ajouter.
+
+---
+
+### En résumé
+
+* Tu as maintenant une **UI complète** et **fiable** pour **créer/éditer/voir** prestataires + services + factures, avec des **validations** et une **UX** moderne (double‑clic, raccourcis, recherche, status, surlignage impayés).
+* Côté DB/DAO, les CRUD + index et les migrations **idempotentes** assurent que l’UI **ne “se vide” plus** à cause d’un échec silencieux.
+
+Tu peux appliquer ces patchs tels quels. Si tu préfères, je te fournis **des diffs unifiés** (format `git patch`) correspondant exactement aux fichiers indiqués.

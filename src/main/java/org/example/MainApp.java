@@ -78,7 +78,8 @@ public final class MainApp extends Application {
             Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", session.username() + ".db");
             Files.createDirectories(dbFile.getParent());
             log.info("DB path = {}", dbFile);
-            userDb = new UserDB(dbFile.toString(), session.key());
+            userDb = new UserDB(dbFile.toString());
+            userDb.openOrRepair(session.key().getEncoded());
             dao = new org.example.dao.SecureDB(userDb::connection, session.userId(), session.key());
             launchUI(stage, session.key());
         } catch (Exception ex) {
@@ -107,7 +108,7 @@ public final class MainApp extends Application {
         stage.setTitle("Gestion des Prestataires");
         Scene sc = new Scene(view.getRoot(), 920, 600);
         if (Boolean.getBoolean("app.safeUi")) {
-            Scene.setUserAgentStylesheet(null);
+            sc.getStylesheets().clear();
         } else {
             ThemeManager.apply(sc);
         }

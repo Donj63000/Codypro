@@ -75,7 +75,8 @@ public final class AuthService {
         Arrays.fill(newPwd, '\0');
 
         Path db = Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db");
-        try (UserDB udb = new UserDB(db.toString(), sess.key())) {
+        try (UserDB udb = new UserDB(db.toString())) {
+            udb.openPool(sess.key().getEncoded());
             Connection c = udb.connection();
             SqlcipherUtil.disableWalForRekey(c);
             SqlcipherUtil.rekey(c, newKey.getEncoded(), KDF_ITER_NEW);

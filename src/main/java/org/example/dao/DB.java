@@ -195,15 +195,21 @@ public class DB implements ConnectionProvider {
     public List<Prestataire> list(String filter) {
         String sql = """
                 SELECT p.*,
-                       (SELECT COUNT(*) FROM factures f WHERE f.prestataire_id=p.id AND f.paye=0) AS nb_impayes
+                       (SELECT COUNT(*) FROM factures f WHERE f.prestataire_id = p.id AND f.paye = 0) AS impayes
                 FROM prestataires p
-                WHERE p.nom LIKE ? OR p.societe LIKE ?
-                ORDER BY p.nom""";
+                WHERE (? IS NULL OR ? = '' OR
+                       p.nom LIKE ? OR p.societe LIKE ? OR p.email LIKE ? OR p.telephone LIKE ?)
+                ORDER BY p.nom COLLATE NOCASE""";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            String like = '%' + filter + '%';
-            ps.setString(1, like);
-            ps.setString(2, like);
+            String q = (filter == null) ? "" : filter;
+            String like = '%' + q + '%';
+            ps.setString(1, q);
+            ps.setString(2, q);
+            ps.setString(3, like);
+            ps.setString(4, like);
+            ps.setString(5, like);
+            ps.setString(6, like);
             ResultSet rs = ps.executeQuery();
             List<Prestataire> out = new ArrayList<>();
             while (rs.next()) out.add(toPrestataire(rs));
@@ -250,6 +256,9 @@ public class DB implements ConnectionProvider {
             throw new RuntimeException(e);
         }
     }
+
+    // Wrappers to match prompt.txt naming (optional aliases)
+    public void deletePrestataire(int prestataireId) { delete(prestataireId); }
 
     public Prestataire findPrestataire(int id) {
         try (Connection conn = getConnection();
@@ -364,6 +373,8 @@ public class DB implements ConnectionProvider {
         }
     }
 
+    public List<Facture> facturesPrestataire(int prestataireId) { return factures(prestataireId, null); }
+
     public List<Facture> facturesImpayeesAvant(LocalDateTime limit) {
         String sql = "SELECT * FROM factures WHERE paye=0 AND preavis_envoye=0 AND echeance_ts<=?";
         try (Connection conn = getConnection();
@@ -444,9 +455,10 @@ public class DB implements ConnectionProvider {
         else d = LocalDateTime.ofEpochSecond(ts, 0, ZoneOffset.UTC).toLocalDate();
         String date = d == null ? "" : DATE_FR.format(d);
         int imp = 0;
-        try {
-            imp = rs.getInt("nb_impayes");
-        } catch (SQLException ignore) {
+        try { // Prefer alias 'impayes' (prompt), fallback to previous 'nb_impayes'
+            imp = rs.getInt("impayes");
+        } catch (SQLException ignore1) {
+            try { imp = rs.getInt("nb_impayes"); } catch (SQLException ignore2) {}
         }
         Prestataire p = new Prestataire(
                 rs.getInt("id"),
