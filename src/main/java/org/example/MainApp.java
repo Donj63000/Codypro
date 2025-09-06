@@ -107,7 +107,7 @@ public final class MainApp extends Application {
         stage.setTitle("Gestion des Prestataires");
         Scene sc = new Scene(view.getRoot(), 920, 600);
         if (Boolean.getBoolean("app.safeUi")) {
-            Scene.setUserAgentStylesheet(null);
+            sc.getStylesheets().clear();
         } else {
             ThemeManager.apply(sc);
         }
