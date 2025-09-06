@@ -183,10 +183,14 @@ public final class GoogleAuthService implements OAuthService {
     }
 
     private static String[] splitClient(String val) {
-        if (val == null) throw new IllegalArgumentException("No OAuth client configured");
+        if (val == null || val.isBlank()) throw new IllegalArgumentException("No OAuth client configured");
         String[] p = val.split(":", 2);
-        if (p.length != 2 || p[0].isBlank() || p[1].isBlank())
-            throw new IllegalArgumentException("Client ID and secret must be provided");
+        if (p.length == 1) {
+            // Installed app: only client_id is required with PKCE
+            if (p[0].isBlank()) throw new IllegalArgumentException("Client ID must be provided");
+            return new String[]{p[0], ""};
+        }
+        if (p[0].isBlank() || p[1].isBlank()) throw new IllegalArgumentException("Client ID must be provided");
         return p;
     }
 

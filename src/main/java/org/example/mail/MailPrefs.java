@@ -32,32 +32,32 @@ public record MailPrefs(
                     """
                     Bonjour %NOM%,
 
-                    Nous n'avons pas encore reçu votre règlement de %MONTANT% €
+                    Nous n'avons pas encore reçu votre règlement de %MONTANT% €
                     (échéance %ECHEANCE%).
 
                     Merci de régulariser au plus vite.
 
                     Cordialement.
                     """,
-                    "🛈 Pré‑avis facture %ID% – %NOM%",
+                    "Préavis facture %ID% – %NOM%",
                     "Le prestataire %NOM% (%EMAIL%) n'a pas réglé la facture %ID% "
-                            + "(échéance %ECHEANCE%, montant %MONTANT% €)."
+                            + "(échéance %ECHEANCE%, montant %MONTANT% €)."
             },
             "en", new String[]{
                     "Payment reminder – due %ECHEANCE%",
                     """
                     Hello %NOM%,
 
-                    We have not yet received your payment of %MONTANT%€
+                    We have not yet received your payment of %MONTANT% €
                     (due %ECHEANCE%).
 
                     Please settle as soon as possible.
 
                     Regards.
                     """,
-                    "Notice invoice %ID% – %NOM%",
+                    "Pre‑notice invoice %ID% – %NOM%",
                     "Provider %NOM% (%EMAIL%) has not paid invoice %ID% "
-                            + "(due %ECHEANCE%, amount %MONTANT%€)."
+                            + "(due %ECHEANCE%, amount %MONTANT% €)."
             }
     );
 
@@ -124,7 +124,7 @@ public record MailPrefs(
                 rs.getInt("port"),
                 rs.getInt("ssl") != 0,
                 rs.getString("user"),
-                rs.getString("pwd"),
+                TokenCrypto.decrypt(rs.getString("pwd"), key),
                 rs.getString("provider"),
                 TokenCrypto.decrypt(rs.getString("oauth_client"),  key),
                 TokenCrypto.decrypt(rs.getString("oauth_refresh"), key),
@@ -145,7 +145,7 @@ public record MailPrefs(
         ps.setInt   (2, port());
         ps.setInt   (3, ssl() ? 1 : 0);
         ps.setString(4, user());
-        ps.setString(5, pwd());
+        ps.setString(5, TokenCrypto.encrypt(pwd(), key));
         ps.setString(6, provider());
         ps.setString(7, TokenCrypto.encrypt(oauthClient(),  key));
         ps.setString(8, TokenCrypto.encrypt(oauthRefresh(), key));
@@ -160,3 +160,4 @@ public record MailPrefs(
         ps.setString(17, bodySelf());
     }
 }
+

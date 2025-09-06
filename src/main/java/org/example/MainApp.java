@@ -54,7 +54,20 @@ public final class MainApp extends Application {
             AuthService sec = new AuthService(auth);
             try (Statement st = auth.c().createStatement();
                  ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM users")) {
-                if (rs.next() && rs.getInt(1) == 0) new RegisterDialog(sec).showAndWait();
+                if (rs.next() && rs.getInt(1) == 0) {
+                    new RegisterDialog(sec).showAndWait().ifPresent(sess -> {
+                        try {
+                            Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db");
+                            Files.createDirectories(dbFile.getParent());
+                            userDb = new UserDB(dbFile.toString(), sess.key());
+                            dao = new org.example.dao.SecureDB(userDb::connection, sess.userId(), sess.key());
+                            launchUI(stage, sess.key());
+                        } catch (Exception ex) {
+                            showError("Impossible d’ouvrir la base utilisateur:\n" + ex.getMessage());
+                        }
+                    });
+                    return;
+                }
             }
             LoginDialog dlg = new LoginDialog(sec);
             dlg.showAndWait().ifPresent(sess -> {
@@ -62,10 +75,10 @@ public final class MainApp extends Application {
                     Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db");
                     Files.createDirectories(dbFile.getParent());
                     userDb = new UserDB(dbFile.toString(), sess.key());
-                    dao = new DB(userDb::connection);
+                    dao = new org.example.dao.SecureDB(userDb::connection, sess.userId(), sess.key());
                     launchUI(stage, sess.key());
                 } catch (Exception ex) {
-                    showError("Impossible d’ouvrir la base utilisateur :\n" + ex.getMessage());
+                    showError("Impossible d’ouvrir la base utilisateur:\n" + ex.getMessage());
                 }
             });
         } catch (Exception ex) {
@@ -119,10 +132,10 @@ public final class MainApp extends Application {
                             Prestataire pr = dao.findPrestataire(f.getPrestataireId());
                             if (pr == null) continue;
                             String dest = cfg.copyToSelf().isBlank() ? cfg.from() : cfg.copyToSelf();
-                            String subject = "Échéance dans " + slot + " h – facture " + f.getId();
-                            String body = "La facture " + f.getId() + " (" +
-                                    String.format("%.2f", f.getMontantTtc()) + " €) pour " +
-                                    pr.getNom() + " arrive à échéance le " + f.getEcheanceFr() + ".";
+                            String subject = "Échéance dans " + slot + " h – facture " + f.getId();
+                            String body = String.format(java.util.Locale.FRANCE,
+                                    "La facture %d (%.2f €) pour %s arrive à échéance le %s.",
+                                    f.getId(), f.getMontantTtc(), pr.getNom(), f.getEcheanceFr());
                             Mailer.send(mailPrefsDao, cfg, dest, subject, body);
                         } catch (Exception ex) {
                             handleAuthException(ex);
@@ -168,7 +181,7 @@ public final class MainApp extends Application {
             if (t instanceof AuthenticationFailedException || t instanceof TokenResponseException) {
                 mailPrefsDao.invalidateOAuth();
                 Platform.runLater(() ->
-                        showError("Authentification expirée ; veuillez reconfigurer votre compte e‑mail."));
+                        showError("Authentification expirée; veuillez reconfigurer votre compte e‑mail."));
                 return;
             }
         }
@@ -190,3 +203,4 @@ public final class MainApp extends Application {
         if (smtpRelay != null) smtpRelay.stop();
     }
 }
+

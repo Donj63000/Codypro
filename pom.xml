@@ -21,7 +21,7 @@
         <shade.plugin.version>3.5.0</shade.plugin.version>
 
         <hikari.version>5.1.0</hikari.version>
-        <sqlite.version>3.45.1.0</sqlite.version>
+        <sqlite.version>3.50.1.0</sqlite.version>
         <argon2.version>2.11</argon2.version>
         <google.oauth.version>1.34.1</google.oauth.version>
     </properties>
@@ -84,7 +84,7 @@
         </dependency>
 
         <dependency>
-            <groupId>org.xerial</groupId>
+            <groupId>io.github.willena</groupId>
             <artifactId>sqlite-jdbc</artifactId>
             <version>${sqlite.version}</version>
         </dependency>

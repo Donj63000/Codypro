@@ -103,7 +103,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         TextField tfCopy = new TextField(current.copyToSelf());
         tfCopy.setTooltip(new Tooltip("Copie des préavis"));
         Spinner<Integer> spDelay = new Spinner<>(1, 240, current.delayHours());
-        spDelay.setTooltip(new Tooltip("Délai pré‑avis interne (heures)"));
+        spDelay.setTooltip(new Tooltip("Délai préavis interne (heures)"));
 
         cbAuto = new CheckBox("Auto‑découverte serveur");
         cbAuto.setSelected(true);
@@ -164,17 +164,17 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         GridPane gp = new GridPane();
         gp.setHgap(8); gp.setVgap(6); gp.setPadding(new Insets(12));
         int r = 0;
-        gp.addRow(r++, new Label("Mode d'envoi :"), rbClassic, rbOauth2, bOAuthHelp, bSmtpHelp);
-        gp.addRow(r++, new Label("Fournisseur :"), cbProv);
-        gp.addRow(r++, new Label("Client OAuth :"), tfClient);
-        gp.addRow(r++, new Label("Adresse Gmail :"), tfGmail);
-        gp.addRow(r++, new Label("Style :"), cbStyle);
-        gp.addRow(r++, new Label("SMTP :"), tfHost, new Label("Port"), tfPort, cbSSL);
-        gp.addRow(r++, new Label("Utilisateur :"), tfUser);
-        gp.addRow(r++, new Label("Mot de passe :"), tfPwd);
-        gp.addRow(r++, new Label("Adresse expéditeur :"), tfFrom);
-        gp.addRow(r++, new Label("Copie à (nous) :"), tfCopy);
-        gp.addRow(r++, new Label("Délai pré‑avis (h) :"), spDelay);
+        gp.addRow(r++, new Label("Mode d'envoi :"), rbClassic, rbOauth2, bOAuthHelp, bSmtpHelp);
+        gp.addRow(r++, new Label("Fournisseur :"), cbProv);
+        gp.addRow(r++, new Label("Client OAuth (ID) :"), tfClient);
+        gp.addRow(r++, new Label("Adresse Gmail :"), tfGmail);
+        gp.addRow(r++, new Label("Style :"), cbStyle);
+        gp.addRow(r++, new Label("SMTP :"), tfHost, new Label("Port"), tfPort, cbSSL);
+        gp.addRow(r++, new Label("Utilisateur :"), tfUser);
+        gp.addRow(r++, new Label("Mot de passe :"), tfPwd);
+        gp.addRow(r++, new Label("Adresse expéditeur :"), tfFrom);
+        gp.addRow(r++, new Label("Copie à (nous) :"), tfCopy);
+        gp.addRow(r++, new Label("Délai préavis (h) :"), spDelay);
         gp.addRow(r++, cbAuto);
         gp.add(bOAuth, 0, r++, 5, 1);
         gp.add(bTest, 0, r++, 5, 1);
@@ -200,7 +200,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         gpTpl.addRow(t++, new Label("Corps → prestataire"), taBodyP);
         gpTpl.addRow(t++, new Label("Sujet → nous"), taSubjS);
         gpTpl.addRow(t++, new Label("Corps → nous"), taBodyS);
-        gpTpl.add(new Label("Variables : %NOM%, %EMAIL%, %MONTANT%, %ECHEANCE%, %ID%"), 0, t++, 2, 1);
+        gpTpl.add(new Label("Variables : %NOM%, %EMAIL%, %MONTANT%, %ECHEANCE%, %ID%"), 0, t++, 2, 1);
 
         TitledPane adv = new TitledPane("Options avancées", gpTpl);
         adv.setExpanded(false);
@@ -215,10 +215,7 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
                 .or(tfUser.textProperty().isEmpty())
                 .or(portInvalid);
 
-        BooleanBinding oauthInvalid = Bindings.createBooleanBinding(() -> {
-            String[] p = tfClient.getText().split(":", 2);
-            return p.length < 2 || p[0].isBlank() || p[1].isBlank();
-        }, tfClient.textProperty());
+        BooleanBinding oauthInvalid = Bindings.createBooleanBinding(() -> tfClient.getText().trim().isEmpty(), tfClient.textProperty());
 
         BooleanBinding invalid = rbClassic.selectedProperty().and(classicInvalid)
                 .or(tfFrom.textProperty().isEmpty())
@@ -229,9 +226,8 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         bOAuth.disableProperty().bind(oauthInvalid);
 
         bOAuth.setOnAction(ev -> {
-            String[] parts = tfClient.getText().split(":", 2);
-            if (parts.length < 2 || parts[0].isBlank() || parts[1].isBlank()) {
-                alert(Alert.AlertType.ERROR, "Les champs clientId et clientSecret doivent être renseignés");
+            if (tfClient.getText().trim().isEmpty()) {
+                alert(Alert.AlertType.ERROR, "Le champ Client OAuth (ID) est requis");
                 return;
             }
             try {
@@ -357,3 +353,4 @@ public class MailQuickSetupDialog extends Dialog<MailPrefs> {
         d.showAndWait().ifPresent(dao::save);
     }
 }
+

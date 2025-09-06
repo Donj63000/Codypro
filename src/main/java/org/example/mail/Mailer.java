@@ -7,6 +7,8 @@ import org.example.model.Facture;
 import org.example.model.Prestataire;
 
 import java.util.*;
+import java.text.NumberFormat;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class Mailer {
@@ -120,10 +122,13 @@ public final class Mailer {
     }
 
     public static Map<String, String> vars(Prestataire pr, Facture f) {
+        NumberFormat nf = NumberFormat.getNumberInstance(Locale.FRANCE);
+        nf.setMinimumFractionDigits(2);
+        nf.setMaximumFractionDigits(2);
         return Map.of(
                 "%NOM%", pr.getNom(),
                 "%EMAIL%", pr.getEmail(),
-                "%MONTANT%", String.format("%.2f", f.getMontantTtc()),
+                "%MONTANT%", nf.format(f.getMontantTtc()),
                 "%ECHEANCE%", f.getEcheanceFr(),
                 "%ID%", String.valueOf(f.getId())
         );

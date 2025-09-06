@@ -26,7 +26,8 @@ public final class TokenCrypto {
                     CryptoUtils.decrypt(CryptoUtils.base64ToBlob(enc), key),
                     StandardCharsets.UTF_8);
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            // Fallback: value might be stored in plain text; return as-is
+            return enc;
         }
     }
 }
