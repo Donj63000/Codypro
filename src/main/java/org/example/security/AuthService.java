@@ -2,13 +2,14 @@ package org.example.security;
 
 import org.example.dao.AuthDB;
 import org.example.dao.UserDB;
+import org.example.dao.SqlcipherUtil;
 
 import javax.crypto.SecretKey;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.Statement;
 import java.util.Arrays;
 import java.util.HexFormat;
 
@@ -74,9 +75,11 @@ public final class AuthService {
         Arrays.fill(newPwd, '\0');
 
         Path db = Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db");
-        try (UserDB udb = new UserDB(db.toString(), sess.key());
-             Statement st = udb.connection().createStatement()) {
-            st.execute("PRAGMA rekey = '" + HexFormat.of().formatHex(newKey.getEncoded()) + "'");
+        try (UserDB udb = new UserDB(db.toString(), sess.key())) {
+            Connection c = udb.connection();
+            SqlcipherUtil.disableWalForRekey(c);
+            SqlcipherUtil.rekey(c, newKey.getEncoded(), KDF_ITER_NEW);
+            SqlcipherUtil.enableWal(c);
         }
 
         try (PreparedStatement ps = store.c().prepareStatement(
