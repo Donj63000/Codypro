@@ -23,6 +23,8 @@ import org.example.model.Facture;
 import org.example.model.Prestataire;
 import org.example.model.Rappel;
 import org.example.security.AuthService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.crypto.SecretKey;
 import java.nio.file.Files;
@@ -40,7 +42,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public final class MainApp extends Application {
-
+    private static final Logger log = LoggerFactory.getLogger(MainApp.class);
     private DB dao;
     private MailPrefsDAO mailPrefsDao;
     private MainView view;
@@ -51,6 +53,10 @@ public final class MainApp extends Application {
 
     @Override
     public void start(Stage stage) {
+        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+            e.printStackTrace();
+        });
+        System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
         try (AuthDB auth = new AuthDB("auth.db")) {
             AuthService sec = new AuthService(auth);
 
@@ -71,6 +77,7 @@ public final class MainApp extends Application {
 
             Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", session.username() + ".db");
             Files.createDirectories(dbFile.getParent());
+            log.info("DB path = {}", dbFile);
             userDb = new UserDB(dbFile.toString(), session.key());
             dao = new org.example.dao.SecureDB(userDb::connection, session.userId(), session.key());
             launchUI(stage, session.key());
@@ -99,7 +106,11 @@ public final class MainApp extends Application {
         view = new MainView(stage, dao, mailPrefsDao);
         stage.setTitle("Gestion des Prestataires");
         Scene sc = new Scene(view.getRoot(), 920, 600);
-        ThemeManager.apply(sc);
+        if (Boolean.getBoolean("app.safeUi")) {
+            Scene.setUserAgentStylesheet(null);
+        } else {
+            ThemeManager.apply(sc);
+        }
         stage.setScene(sc);
         stage.show();
 
