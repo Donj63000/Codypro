@@ -52,24 +52,16 @@ public final class MainApp extends Application {
     public void start(Stage stage) {
         try (AuthDB auth = new AuthDB("auth.db")) {
             AuthService sec = new AuthService(auth);
+            boolean seeded = false;
             try (Statement st = auth.c().createStatement();
                  ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM users")) {
                 if (rs.next() && rs.getInt(1) == 0) {
-                    new RegisterDialog(sec).showAndWait().ifPresent(sess -> {
-                        try {
-                            Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db");
-                            Files.createDirectories(dbFile.getParent());
-                            userDb = new UserDB(dbFile.toString(), sess.key());
-                            dao = new org.example.dao.SecureDB(userDb::connection, sess.userId(), sess.key());
-                            launchUI(stage, sess.key());
-                        } catch (Exception ex) {
-                            showError("Impossible d’ouvrir la base utilisateur:\n" + ex.getMessage());
-                        }
-                    });
-                    return;
+                    char[] def = "admin".toCharArray();
+                    try { sec.register("admin", def); seeded = true; }
+                    finally { java.util.Arrays.fill(def, '\0'); }
                 }
             }
-            LoginDialog dlg = new LoginDialog(sec);
+            LoginDialog dlg = seeded ? new LoginDialog(sec, "admin", "admin") : new LoginDialog(sec);
             dlg.showAndWait().ifPresent(sess -> {
                 try {
                     Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db");
@@ -203,4 +195,3 @@ public final class MainApp extends Application {
         if (smtpRelay != null) smtpRelay.stop();
     }
 }
-

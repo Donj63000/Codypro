@@ -18,14 +18,19 @@ import org.example.security.AuthService;
 
 public class LoginDialog extends Dialog<AuthService.Session> {
     public LoginDialog(AuthService auth) {
+        this(auth, "", "");
+    }
+
+    public LoginDialog(AuthService auth, String defaultUser, String defaultPwd) {
         setTitle("Connexion");
 
         DialogPane pane = getDialogPane();
         pane.getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
 
-        TextField tfUser = new TextField();
+        TextField tfUser = new TextField(defaultUser == null ? "" : defaultUser);
         tfUser.setPromptText("Nom d'utilisateur");
         PasswordField pfPwd = new PasswordField();
+        if (defaultPwd != null) pfPwd.setText(defaultPwd);
         pfPwd.setPromptText("Mot de passe");
 
         GridPane grid = new GridPane();
