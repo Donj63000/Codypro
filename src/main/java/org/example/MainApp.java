@@ -32,6 +32,7 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -52,29 +53,44 @@ public final class MainApp extends Application {
     public void start(Stage stage) {
         try (AuthDB auth = new AuthDB("auth.db")) {
             AuthService sec = new AuthService(auth);
-            boolean seeded = false;
+
+            AuthService.Session session;
             try (Statement st = auth.c().createStatement();
                  ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM users")) {
                 if (rs.next() && rs.getInt(1) == 0) {
-                    char[] def = "admin".toCharArray();
-                    try { sec.register("admin", def); seeded = true; }
-                    finally { java.util.Arrays.fill(def, '\0'); }
+                    session = new RegisterDialog(sec).showAndWait().orElse(null);
+                } else {
+                    session = promptLoginLoop(sec).orElse(null);
                 }
             }
-            LoginDialog dlg = seeded ? new LoginDialog(sec, "admin", "admin") : new LoginDialog(sec);
-            dlg.showAndWait().ifPresent(sess -> {
-                try {
-                    Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db");
-                    Files.createDirectories(dbFile.getParent());
-                    userDb = new UserDB(dbFile.toString(), sess.key());
-                    dao = new org.example.dao.SecureDB(userDb::connection, sess.userId(), sess.key());
-                    launchUI(stage, sess.key());
-                } catch (Exception ex) {
-                    showError("Impossible d’ouvrir la base utilisateur:\n" + ex.getMessage());
-                }
-            });
+
+            if (session == null) {
+                Platform.exit();
+                return;
+            }
+
+            Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", session.username() + ".db");
+            Files.createDirectories(dbFile.getParent());
+            userDb = new UserDB(dbFile.toString(), session.key());
+            dao = new org.example.dao.SecureDB(userDb::connection, session.userId(), session.key());
+            launchUI(stage, session.key());
         } catch (Exception ex) {
             ex.printStackTrace();
+            showError("Erreur au démarrage: " + ex.getMessage());
+            Platform.exit();
+        }
+    }
+
+    private Optional<AuthService.Session> promptLoginLoop(AuthService sec) {
+        while (true) {
+            Optional<AuthService.Session> opt = new LoginDialog(sec).showAndWait();
+            if (opt.isPresent()) return opt;
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "Voulez‑vous quitter l’application ?", ButtonType.YES, ButtonType.NO);
+            ThemeManager.apply(confirm);
+            if (confirm.showAndWait().orElse(ButtonType.NO) == ButtonType.YES) {
+                return Optional.empty();
+            }
         }
     }
 
