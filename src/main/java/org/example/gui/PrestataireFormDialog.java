@@ -41,10 +41,13 @@ public final class PrestataireFormDialog extends Dialog<Prestataire> {
             tfNom.setText(n(base.getNom())); tfSoc.setText(n(base.getSociete()));
             tfTel.setText(n(base.getTelephone())); tfMail.setText(n(base.getEmail()));
             slNote.setValue(base.getNote()); lbNote.setText(Integer.toString(base.getNote()));
-            if (base.getDateContratTs()!=null) {
-                var ld = java.time.Instant.ofEpochMilli(base.getDateContratTs())
-                        .atZone(ZoneId.systemDefault()).toLocalDate();
-                dpContrat.setValue(ld);
+            var dc = base.getDateContrat();
+            if (dc != null && !dc.isBlank()) {
+                try {
+                    var fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                    var ld = java.time.LocalDate.parse(dc, fmt);
+                    dpContrat.setValue(ld);
+                } catch (Exception ignore) {}
             }
         }
 
@@ -56,19 +59,20 @@ public final class PrestataireFormDialog extends Dialog<Prestataire> {
 
         setResultConverter(bt -> {
             if (bt != ButtonType.OK) return null;
-            Prestataire p = (base != null ? base : new Prestataire());
-            p.setNom(tfNom.getText().trim());
-            p.setSociete(z(tfSoc.getText()));
-            p.setTelephone(z(tfTel.getText()));
-            p.setEmail(z(tfMail.getText()));
-            p.setNote((int) slNote.getValue());
+            var nom = tfNom.getText().trim();
+            var soc = z(tfSoc.getText());
+            var tel = z(tfTel.getText());
+            var mail = z(tfMail.getText());
+            var note = (int) slNote.getValue();
+            var fact = (base != null ? base.getFacturation() : "");
+            String dateContrat = null;
             if (dpContrat.getValue()!=null) {
                 var ld = dpContrat.getValue();
                 var fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
-                p.setDateContrat(ld.format(fmt));
-                p.setDateContratTs(ld.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli());
-            } else { p.setDateContrat(null); p.setDateContratTs(null); }
-            return p;
+                dateContrat = ld.format(fmt);
+            }
+            int id = base != null ? base.getId() : 0;
+            return new Prestataire(id, nom, soc, tel, mail, note, fact, dateContrat);
         });
     }
 

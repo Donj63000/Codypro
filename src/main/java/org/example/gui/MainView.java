@@ -338,7 +338,7 @@ public final class MainView {
         PrestataireFormDialog dlg = new PrestataireFormDialog(null);
         ThemeManager.apply(dlg);
         dlg.showAndWait().ifPresent(p -> exec.submit(() -> {
-            try { int id = dao.insertPrestataire(p); p.setId(id);
+            try { int id = dao.insertPrestataire(p); p.idProperty().set(id);
                 Platform.runLater(() -> { items.add(p); table.getSelectionModel().select(p); });
             } catch (Exception ex) { Platform.runLater(() -> showError(ex)); }
         }));
@@ -349,7 +349,7 @@ public final class MainView {
         PrestataireFormDialog dlg = new PrestataireFormDialog(clonePrestataire(sel));
         ThemeManager.apply(dlg);
         dlg.showAndWait().ifPresent(p -> exec.submit(() -> {
-            try { p.setId(sel.getId()); dao.updatePrestataire(p);
+            try { p.idProperty().set(sel.getId()); dao.updatePrestataire(p);
                 Platform.runLater(() -> { int i = items.indexOf(sel); items.set(i, p); table.getSelectionModel().select(p); });
             } catch (Exception ex) { Platform.runLater(() -> showError(ex)); }
         }));
@@ -366,10 +366,8 @@ public final class MainView {
     }
 
     private static Prestataire clonePrestataire(Prestataire p) {
-        Prestataire c = new Prestataire();
-        c.setId(p.getId()); c.setNom(p.getNom()); c.setSociete(p.getSociete());
-        c.setTelephone(p.getTelephone()); c.setEmail(p.getEmail()); c.setNote(p.getNote());
-        c.setDateContrat(p.getDateContrat()); c.setDateContratTs(p.getDateContratTs());
+        Prestataire c = p.copyWithoutId();
+        c.idProperty().set(p.getId());
         return c;
     }
     private boolean confirm(String msg) {

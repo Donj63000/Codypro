@@ -35,17 +35,11 @@ public final class FactureFormDialog extends Dialog<Facture> {
 
         if (base!=null){
             tfDesc.setText(n(base.getDescription()));
-            if (base.getEcheanceTs()!=null){
-                var ld = java.time.Instant.ofEpochMilli(base.getEcheanceTs()).atZone(ZoneId.systemDefault()).toLocalDate();
-                dpEch.setValue(ld);
-            }
+            if (base.getEcheance()!=null){ dpEch.setValue(base.getEcheance()); }
             tfHt.setText(base.getMontantHt()==null ? "" : base.getMontantHt().toPlainString());
             spTva.getValueFactory().setValue(base.getTvaPct()==null ? 20.0 : base.getTvaPct().doubleValue());
             cbPayee.setSelected(base.isPaye());
-            if (base.getDatePaiementTs()!=null){
-                var ld = java.time.Instant.ofEpochMilli(base.getDatePaiementTs()).atZone(ZoneId.systemDefault()).toLocalDate();
-                dpPay.setValue(ld); dpPay.setDisable(false);
-            }
+            if (base.getDatePaiement()!=null){ dpPay.setValue(base.getDatePaiement()); dpPay.setDisable(false); }
         }
 
         Node ok = getDialogPane().lookupButton(ButtonType.OK);
@@ -57,28 +51,18 @@ public final class FactureFormDialog extends Dialog<Facture> {
 
         setResultConverter(bt -> {
             if (bt != ButtonType.OK) return null;
-            Facture f = (base!=null ? base : new Facture());
-            f.setDescription(tfDesc.getText().trim());
-            if (dpEch.getValue()!=null){
-                var ld = dpEch.getValue();
-                var fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
-                f.setEcheance(ld.format(fmt));
-                f.setEcheanceTs(ld.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli());
-            } else { f.setEcheance(null); f.setEcheanceTs(null); }
-            var ht  = new BigDecimal(tfHt.getText().trim().replace(',', '.'));
-            var tva = BigDecimal.valueOf(spTva.getValue());
-            var mtva = ht.multiply(tva).divide(BigDecimal.valueOf(100));
-            var ttc  = ht.add(mtva);
-            f.setMontantHt(ht); f.setTvaPct(tva); f.setMontantTva(mtva); f.setMontantTtc(ttc);
-            f.setDevise("EUR");
-            f.setPaye(cbPayee.isSelected());
-            if (cbPayee.isSelected() && dpPay.getValue()!=null){
-                var ld = dpPay.getValue();
-                var fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
-                f.setDatePaiement(ld.format(fmt));
-                f.setDatePaiementTs(ld.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli());
-            } else { f.setDatePaiement(null); f.setDatePaiementTs(null); }
-            return f;
+            var desc = tfDesc.getText().trim();
+            var ech  = dpEch.getValue();
+            var ht   = new BigDecimal(tfHt.getText().trim().replace(',', '.'));
+            var tva  = BigDecimal.valueOf(spTva.getValue());
+            var mtva = Facture.calcTva(ht, tva);
+            var ttc  = Facture.calcTtc(ht, tva);
+            boolean payee = cbPayee.isSelected();
+            var datePay = payee ? dpPay.getValue() : null;
+            int id = base != null ? base.getId() : 0;
+            int pid = base != null ? base.getPrestataireId() : 0;
+            boolean preavis = base != null && base.isPreavisEnvoye();
+            return new Facture(id, pid, desc, ech, ht, tva, mtva, ttc, payee, datePay, preavis);
         });
     }
 

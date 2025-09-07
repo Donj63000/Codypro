@@ -192,17 +192,30 @@ public class DB implements ConnectionProvider {
     }
 
     // ---------- Helpers dates ----------
-    private static Long parseFrDateMillis(String fr) {
+    // Parses a FR date (dd/MM/yyyy) or ISO date to epoch SECONDS (not ms)
+    private static Long parseFrDateSeconds(String fr) {
         if (fr == null || fr.isBlank()) return null;
         try {
             LocalDate ld = LocalDate.parse(fr, DATE_FR);
-            return ld.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            return ld.atStartOfDay(ZoneId.systemDefault()).toInstant().getEpochSecond();
         } catch (Exception ignore) {
-            return null;
+            try {
+                LocalDate ld = LocalDate.parse(fr);
+                return ld.atStartOfDay(ZoneId.systemDefault()).toInstant().getEpochSecond();
+            } catch (Exception ignore2) {
+                return null;
+            }
         }
     }
 
-    // ---------- Helpers reflection tolérants aux noms d'accesseurs ----------
+    // Normalizes a possibly-millis epoch to SECONDS. Accepts null.
+    private static Long toEpochSeconds(Long ts) {
+        if (ts == null) return null;
+        // Heuristic: values > 10^12 are likely milliseconds
+        return ts >= 1_000_000_000_000L ? ts / 1000L : ts;
+    }
+
+    /* =================== Helpers génériques =================== */
     private static String callString(Object o, String... candidates) {
         for (String name : candidates) {
             try {
@@ -234,8 +247,131 @@ public class DB implements ConnectionProvider {
     private static String svcDate(org.example.model.ServiceRow s) {
         return callString(s, "getDate", "date");
     }
-    private static Long svcDateTs(org.example.model.ServiceRow s) {
+    private static Long svcDateTsRaw(org.example.model.ServiceRow s) {
         return callLong(s, "getDateTs", "dateTs");
+    }
+
+    // --------- Helpers tolérants et adaptateurs (ajouts) ---------
+    /* =================== Helpers génériques =================== */
+    private static Object call(Object o, String name) {
+        try {
+            Method m = o.getClass().getMethod(name);
+            m.setAccessible(true);
+            return m.invoke(o);
+        } catch (Exception ignore) { return null; }
+    }
+
+    private static String getStr(Object o, String... names) {
+        for (String n : names) {
+            Object v = call(o, n);
+            if (v == null) continue;
+            if (v instanceof LocalDate ld) return DATE_FR.format(ld);
+            return v.toString();
+        }
+        return null;
+    }
+
+    private static Long getLong(Object o, String... names) {
+        for (String n : names) {
+            Object v = call(o, n);
+            if (v == null) continue;
+            if (v instanceof Number num) return num.longValue();
+            try { return Long.parseLong(v.toString()); } catch (Exception ignore) {}
+        }
+        return null;
+    }
+
+    private static Integer getInt(Object o, String... names) {
+        for (String n : names) {
+            Object v = call(o, n);
+            if (v == null) continue;
+            if (v instanceof Number num) return num.intValue();
+            try { return Integer.parseInt(v.toString()); } catch (Exception ignore) {}
+        }
+        return null;
+    }
+
+    private static BigDecimal getDec(Object o, String... names) {
+        for (String n : names) {
+            Object v = call(o, n);
+            if (v == null) continue;
+            if (v instanceof BigDecimal bd) return bd;
+            try { return new BigDecimal(v.toString()); } catch (Exception ignore) {}
+        }
+        return null;
+    }
+
+    private static Boolean getBool(Object o, String... names) {
+        for (String n : names) {
+            Object v = call(o, n);
+            if (v == null) continue;
+            if (v instanceof Boolean b) return b;
+            if (v instanceof Number num) return num.intValue() != 0;
+            String s = v.toString().trim();
+            if (s.equalsIgnoreCase("true") || s.equals("1") || s.equalsIgnoreCase("yes") || s.equalsIgnoreCase("oui")) return true;
+            if (s.equalsIgnoreCase("false") || s.equals("0") || s.equalsIgnoreCase("no") || s.equalsIgnoreCase("non")) return false;
+        }
+        return null;
+    }
+
+    // ---- Prestataire ----
+    private static String prestaNom(org.example.model.Prestataire p) { return getStr(p, "getNom", "nom"); }
+    private static String prestaSoc(org.example.model.Prestataire p) { return getStr(p, "getSociete", "societe"); }
+    private static String prestaTel(org.example.model.Prestataire p) { return getStr(p, "getTelephone", "telephone"); }
+    private static String prestaMail(org.example.model.Prestataire p){ return getStr(p, "getEmail", "email"); }
+    private static Integer prestaNote(org.example.model.Prestataire p){ Integer v = getInt(p, "getNote", "note"); return v==null?0:v; }
+    private static String prestaContrat(org.example.model.Prestataire p){ return getStr(p, "getDateContrat", "dateContrat"); }
+    private static Long   prestaContratTs(org.example.model.Prestataire p) {
+        Long ts = getLong(p, "getDateContratTs", "dateContratTs");
+        if (ts != null) return toEpochSeconds(ts);
+        return parseFrDateSeconds(prestaContrat(p));
+    }
+    private static Integer prestaId(org.example.model.Prestataire p) {
+        Integer id = getInt(p, "getId", "id");
+        if (id == null) throw new IllegalArgumentException("Prestataire.id manquant");
+        return id;
+    }
+
+    // ---- ServiceRow ----
+    private static String svcDateStr(org.example.model.ServiceRow s) { return getStr(s, "getDate", "date"); }
+    private static Long   svcDateTs(org.example.model.ServiceRow s) {
+        Long ts = getLong(s, "getDateTs", "dateTs");
+        if (ts != null) return toEpochSeconds(ts);
+        return parseFrDateSeconds(svcDateStr(s));
+    }
+    private static Integer svcId(org.example.model.ServiceRow s) {
+        Integer id = getInt(s, "getId", "id");
+        if (id == null) throw new IllegalArgumentException("ServiceRow.id manquant");
+        return id;
+    }
+
+    // ---- Facture ----
+    private static String facDesc(org.example.model.Facture f) { return getStr(f, "getDescription", "description", "desc"); }
+    private static String facEchStr(org.example.model.Facture f) { return getStr(f, "getEcheance", "getEcheanceFr", "echeance", "echeanceFr"); }
+    private static Long   facEchTs(org.example.model.Facture f) {
+        Long ts = getLong(f, "getEcheanceTs", "echeanceTs");
+        if (ts != null) return toEpochSeconds(ts);
+        return parseFrDateSeconds(facEchStr(f));
+    }
+    private static BigDecimal facHt(org.example.model.Facture f) { BigDecimal bd = getDec(f, "getMontantHt", "montantHt", "ht"); return bd==null?BigDecimal.ZERO:bd; }
+    private static BigDecimal facTvaPct(org.example.model.Facture f) { BigDecimal bd = getDec(f, "getTvaPct", "tvaPct", "tva"); return bd==null?new BigDecimal("20"):bd; }
+    private static BigDecimal facTva(BigDecimal ht, BigDecimal pct){ return ht.multiply(pct).divide(new BigDecimal("100")); }
+    private static BigDecimal facTtc(org.example.model.Facture f, BigDecimal ht, BigDecimal tva) {
+        BigDecimal bd = getDec(f, "getMontantTtc", "montantTtc");
+        return bd==null ? ht.add(tva) : bd;
+    }
+    private static String facDevise(org.example.model.Facture f) { String d = getStr(f, "getDevise", "devise"); return d==null?"EUR":d; }
+    private static boolean facPayee(org.example.model.Facture f) { Boolean b = getBool(f, "isPaye", "getPaye", "paye"); return b != null && b; }
+    private static String facPayStr(org.example.model.Facture f) { return getStr(f, "getDatePaiement", "datePaiement", "getDatePaiementFr", "datePaiementFr"); }
+    private static Long   facPayTs(org.example.model.Facture f) {
+        Long ts = getLong(f, "getDatePaiementTs", "datePaiementTs");
+        if (ts != null) return toEpochSeconds(ts);
+        return parseFrDateSeconds(facPayStr(f));
+    }
+    private static Integer facId(org.example.model.Facture f) {
+        Integer id = getInt(f, "getId", "id");
+        if (id == null) throw new IllegalArgumentException("Facture.id manquant");
+        return id;
     }
 
     public List<Prestataire> list(String filter) {
@@ -310,13 +446,13 @@ public class DB implements ConnectionProvider {
     """;
         try (Connection c = getConnection();
              PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setString(1, p.getNom());
-            ps.setString(2, p.getSociete());
-            ps.setString(3, p.getTelephone());
-            ps.setString(4, p.getEmail());
-            ps.setInt(5, p.getNote());
-            ps.setString(6, p.getDateContrat());
-            Long ts = parseFrDateMillis(p.getDateContrat());
+            ps.setString(1, prestaNom(p));
+            ps.setString(2, prestaSoc(p));
+            ps.setString(3, prestaTel(p));
+            ps.setString(4, prestaMail(p));
+            ps.setInt   (5, prestaNote(p));
+            ps.setString(6, prestaContrat(p));
+            Long ts = prestaContratTs(p);
             if (ts == null) ps.setNull(7, Types.BIGINT); else ps.setLong(7, ts);
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) { if (rs.next()) return rs.getInt(1); }
@@ -340,15 +476,15 @@ public class DB implements ConnectionProvider {
         WHERE id=?
     """;
         try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, p.getNom());
-            ps.setString(2, p.getSociete());
-            ps.setString(3, p.getTelephone());
-            ps.setString(4, p.getEmail());
-            ps.setInt(5, p.getNote());
-            ps.setString(6, p.getDateContrat());
-            Long ts = parseFrDateMillis(p.getDateContrat());
+            ps.setString(1, prestaNom(p));
+            ps.setString(2, prestaSoc(p));
+            ps.setString(3, prestaTel(p));
+            ps.setString(4, prestaMail(p));
+            ps.setInt   (5, prestaNote(p));
+            ps.setString(6, prestaContrat(p));
+            Long ts = prestaContratTs(p);
             if (ts == null) ps.setNull(7, Types.BIGINT); else ps.setLong(7, ts);
-            ps.setInt(8, p.getId());
+            ps.setInt(8, prestaId(p));
             if (ps.executeUpdate() != 1) throw new SQLException("Aucune ligne mise à jour");
         } catch (SQLException e) {
             String m = e.getMessage();
@@ -405,7 +541,8 @@ public class DB implements ConnectionProvider {
                 long ts = rs.getLong("date_ts");
                 if (rs.wasNull()) d = parseDate(rs.getString("date"));
                 else d = LocalDateTime.ofEpochSecond(ts, 0, ZoneOffset.UTC).toLocalDate();
-                out.add(new ServiceRow(rs.getString("description"), d == null ? "" : DATE_FR.format(d)));
+                String dateStr = d == null ? DATE_FR.format(LocalDate.now()) : DATE_FR.format(d);
+                out.add(new ServiceRow(rs.getString("description"), dateStr));
             }
             return out;
         } catch (SQLException e) {
@@ -421,9 +558,8 @@ public class DB implements ConnectionProvider {
         try (Connection c = getConnection();
              PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             String desc = svcDesc(s);
-            String date = svcDate(s);
+            String date = svcDateStr(s);
             Long   ts   = svcDateTs(s);
-            if (ts == null) ts = parseFrDateMillis(date);
 
             ps.setInt(1, prestataireId);
             ps.setString(2, desc);
@@ -442,14 +578,13 @@ public class DB implements ConnectionProvider {
         String sql = "UPDATE services SET description=?, date=?, date_ts=? WHERE id=?";
         try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             String desc = svcDesc(s);
-            String date = svcDate(s);
+            String date = svcDateStr(s);
             Long   ts   = svcDateTs(s);
-            if (ts == null) ts = parseFrDateMillis(date);
 
             ps.setString(1, desc);
             ps.setString(2, date);
             if (ts == null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, ts);
-            ps.setInt(4, s.getId());
+            ps.setInt(4, svcId(s));
             ps.executeUpdate();
         } catch (SQLException e) { throw new RuntimeException(e); }
     }
@@ -471,18 +606,30 @@ public class DB implements ConnectionProvider {
     """;
         try (Connection c = getConnection();
              PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            String desc = facDesc(f);
+            String ech  = facEchStr(f);
+            Long   echTs= facEchTs(f);
+            BigDecimal ht = facHt(f);
+            BigDecimal tvaPct = facTvaPct(f);
+            BigDecimal mTva = facTva(ht, tvaPct);
+            BigDecimal ttc  = facTtc(f, ht, mTva);
+            String devise   = facDevise(f);
+            boolean payee   = facPayee(f);
+            String payFr    = facPayStr(f);
+            Long   payTs    = facPayTs(f);
+
             ps.setInt(1, prestataireId);
-            ps.setString(2, f.getDescription());
-            ps.setString(3, f.getEcheance());
-            if (f.getEcheanceTs()==null) ps.setNull(4, Types.BIGINT); else ps.setLong(4, f.getEcheanceTs());
-            ps.setBigDecimal(5, f.getMontantHt());
-            ps.setBigDecimal(6, f.getTvaPct());
-            ps.setBigDecimal(7, f.getMontantTva());
-            ps.setBigDecimal(8, f.getMontantTtc());
-            ps.setString(9, f.getDevise()==null?"EUR":f.getDevise());
-            ps.setInt(10, f.isPaye()?1:0);
-            ps.setString(11, f.getDatePaiement());
-            if (f.getDatePaiementTs()==null) ps.setNull(12, Types.BIGINT); else ps.setLong(12, f.getDatePaiementTs());
+            ps.setString(2, desc);
+            ps.setString(3, ech);
+            if (echTs == null) ps.setNull(4, Types.BIGINT); else ps.setLong(4, echTs);
+            ps.setBigDecimal(5, ht);
+            ps.setBigDecimal(6, tvaPct);
+            ps.setBigDecimal(7, mTva);
+            ps.setBigDecimal(8, ttc);
+            ps.setString(9, devise);
+            ps.setInt(10, payee ? 1 : 0);
+            ps.setString(11, payFr);
+            if (payTs == null) ps.setNull(12, Types.BIGINT); else ps.setLong(12, payTs);
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) { if (rs.next()) return rs.getInt(1); }
             try (Statement s2 = c.createStatement(); ResultSet r2 = s2.executeQuery("SELECT last_insert_rowid()")) {
@@ -500,18 +647,30 @@ public class DB implements ConnectionProvider {
         WHERE id=?
     """;
         try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, f.getDescription());
-            ps.setString(2, f.getEcheance());
-            if (f.getEcheanceTs()==null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, f.getEcheanceTs());
-            ps.setBigDecimal(4, f.getMontantHt());
-            ps.setBigDecimal(5, f.getTvaPct());
-            ps.setBigDecimal(6, f.getMontantTva());
-            ps.setBigDecimal(7, f.getMontantTtc());
-            ps.setString(8, f.getDevise()==null?"EUR":f.getDevise());
-            ps.setInt(9, f.isPaye()?1:0);
-            ps.setString(10, f.getDatePaiement());
-            if (f.getDatePaiementTs()==null) ps.setNull(11, Types.BIGINT); else ps.setLong(11, f.getDatePaiementTs());
-            ps.setInt(12, f.getId());
+            String desc = facDesc(f);
+            String ech  = facEchStr(f);
+            Long   echTs= facEchTs(f);
+            BigDecimal ht = facHt(f);
+            BigDecimal tvaPct = facTvaPct(f);
+            BigDecimal mTva = facTva(ht, tvaPct);
+            BigDecimal ttc  = facTtc(f, ht, mTva);
+            String devise   = facDevise(f);
+            boolean payee   = facPayee(f);
+            String payFr    = facPayStr(f);
+            Long   payTs    = facPayTs(f);
+
+            ps.setString(1, desc);
+            ps.setString(2, ech);
+            if (echTs == null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, echTs);
+            ps.setBigDecimal(4, ht);
+            ps.setBigDecimal(5, tvaPct);
+            ps.setBigDecimal(6, mTva);
+            ps.setBigDecimal(7, ttc);
+            ps.setString(8, devise);
+            ps.setInt(9, payee ? 1 : 0);
+            ps.setString(10, payFr);
+            if (payTs == null) ps.setNull(11, Types.BIGINT); else ps.setLong(11, payTs);
+            ps.setInt(12, facId(f));
             ps.executeUpdate();
         } catch (SQLException e) { throw new RuntimeException(e); }
     }
@@ -548,24 +707,30 @@ public class DB implements ConnectionProvider {
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
+            String desc = facDesc(f);
+            String ech  = facEchStr(f);
+            Long   echTs= facEchTs(f);
+            BigDecimal ht = facHt(f);
+            BigDecimal tvaPct = facTvaPct(f);
+            BigDecimal mTva = facTva(ht, tvaPct);
+            BigDecimal ttc  = facTtc(f, ht, mTva);
+            String devise   = facDevise(f);
+            boolean payee   = facPayee(f);
+            String payFr    = facPayStr(f);
+            Long   payTs    = facPayTs(f);
+
             ps.setInt(1, f.getPrestataireId());
-            ps.setString(2, f.getDescription());
-            ps.setString(3, f.getEcheance().format(DATE_DB));
-            ps.setLong(4, f.getEcheance().atStartOfDay().toEpochSecond(ZoneOffset.UTC));
-            ps.setBigDecimal(5, f.getMontantHt());
-            ps.setBigDecimal(6, f.getTvaPct());
-            ps.setBigDecimal(7, f.getMontantTva());
-            ps.setBigDecimal(8, f.getMontantTtc());
-            ps.setString(9, "EUR");
-            ps.setInt(10, f.isPaye() ? 1 : 0);
-            LocalDate dp = f.getDatePaiement();
-            if (dp == null) {
-                ps.setNull(11, Types.VARCHAR);
-                ps.setNull(12, Types.INTEGER);
-            } else {
-                ps.setString(11, dp.format(DATE_DB));
-                ps.setLong(12, dp.atStartOfDay().toEpochSecond(ZoneOffset.UTC));
-            }
+            ps.setString(2, desc);
+            ps.setString(3, ech);
+            if (echTs == null) ps.setNull(4, Types.BIGINT); else ps.setLong(4, echTs);
+            ps.setBigDecimal(5, ht);
+            ps.setBigDecimal(6, tvaPct);
+            ps.setBigDecimal(7, mTva);
+            ps.setBigDecimal(8, ttc);
+            ps.setString(9, devise);
+            ps.setInt(10, payee ? 1 : 0);
+            ps.setString(11, payFr);
+            if (payTs == null) ps.setNull(12, Types.BIGINT); else ps.setLong(12, payTs);
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -739,21 +904,16 @@ public class DB implements ConnectionProvider {
     }
 
     private static void bindPrestataire(PreparedStatement ps, Prestataire p) throws SQLException {
-        ps.setString(1, p.getNom());
-        ps.setString(2, p.getSociete());
-        ps.setString(3, p.getTelephone());
-        ps.setString(4, p.getEmail());
-        ps.setInt(5, p.getNote());
-        ps.setString(6, p.getFacturation());
-        String raw = Objects.toString(p.getDateContrat(), "").trim();
-        if (raw.isEmpty()) {
-            ps.setNull(7, Types.VARCHAR);
-            ps.setNull(8, Types.INTEGER);
-        } else {
-            LocalDate d = LocalDate.parse(raw, DATE_FR);
-            ps.setString(7, d.format(DATE_DB));
-            ps.setLong(8, d.atStartOfDay().toEpochSecond(ZoneOffset.UTC));
-        }
+        ps.setString(1, prestaNom(p));
+        ps.setString(2, prestaSoc(p));
+        ps.setString(3, prestaTel(p));
+        ps.setString(4, prestaMail(p));
+        ps.setInt(5, prestaNote(p));
+        ps.setString(6, getStr(p, "getFacturation", "facturation"));
+        String date = prestaContrat(p);
+        Long   ts   = prestaContratTs(p);
+        ps.setString(7, date);
+        if (ts == null) ps.setNull(8, Types.BIGINT); else ps.setLong(8, ts);
     }
 
     private static LocalDate parseDate(String raw) {

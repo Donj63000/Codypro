@@ -24,31 +24,34 @@ public final class ServiceFormDialog extends Dialog<ServiceRow> {
         getDialogPane().setContent(g);
 
         if (base != null) {
-            taDesc.setText(base.getDescription());
-            if (base.getDateTs()!=null) {
-                var ld = java.time.Instant.ofEpochMilli(base.getDateTs()).atZone(ZoneId.systemDefault()).toLocalDate();
-                dpDate.setValue(ld);
+            taDesc.setText(base.desc());
+            var d = base.date();
+            if (d != null && !d.isBlank()) {
+                try {
+                    var fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                    var ld = java.time.LocalDate.parse(d, fmt);
+                    dpDate.setValue(ld);
+                } catch (Exception ignore) {}
             }
         }
 
         Node ok = getDialogPane().lookupButton(ButtonType.OK);
         ok.addEventFilter(javafx.event.ActionEvent.ACTION, evt -> {
             if (taDesc.getText()==null || taDesc.getText().trim().isEmpty()){
-                err.setText("La description est obligatoire."); evt.consume();
+                err.setText("La description est obligatoire."); evt.consume(); return;
+            }
+            if (dpDate.getValue()==null) {
+                err.setText("La date est obligatoire."); evt.consume();
             }
         });
 
         setResultConverter(bt -> {
             if (bt != ButtonType.OK) return null;
-            ServiceRow s = (base != null ? base : new ServiceRow());
-            s.setDescription(taDesc.getText().trim());
-            if (dpDate.getValue()!=null){
-                var ld = dpDate.getValue();
-                var fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
-                s.setDate(ld.format(fmt));
-                s.setDateTs(ld.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli());
-            } else { s.setDate(null); s.setDateTs(null); }
-            return s;
+            String desc = taDesc.getText().trim();
+            var ld = dpDate.getValue();
+            var fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+            String dateStr = ld.format(fmt);
+            return new ServiceRow(desc, dateStr);
         });
     }
 }

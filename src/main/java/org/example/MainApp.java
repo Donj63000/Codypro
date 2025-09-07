@@ -58,7 +58,7 @@ public final class MainApp extends Application {
             e.printStackTrace();
         });
         System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
-        try (AuthDB auth = new AuthDB("auth.db")) {
+        try (AuthDB auth = new AuthDB()) {
             AuthService sec = new AuthService(auth);
 
             AuthService.Session session;

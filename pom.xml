@@ -187,6 +187,10 @@
                 <version>0.0.8</version>
                 <configuration>
                     <mainClass>org.example.MainApp</mainClass>
+                    <jvmArgs>
+                      --enable-native-access=ALL-UNNAMED
+                      --enable-native-access=javafx.graphics
+                    </jvmArgs>
                 </configuration>
             </plugin>
 

@@ -13,6 +13,7 @@ public final class UserDB implements AutoCloseable {
 
     public UserDB(String filePath) {
         this.dbPath = Path.of(filePath);
+        try { Files.createDirectories(this.dbPath.getParent()); } catch (Exception ignore) {}
     }
 
     // Applique PRAGMA key à CHAQUE connexion et vérifie l'accès
@@ -41,29 +42,52 @@ public final class UserDB implements AutoCloseable {
         try { openPool(keyBytes); return; }
         catch (SQLException e) { if (!isNotADB(e)) throw e; }
 
-        try (Connection cPlain = DriverManager.getConnection("jdbc:sqlite:" + dbPath.toAbsolutePath());
-             Statement st = cPlain.createStatement()) {
-            st.execute("PRAGMA foreign_keys=ON");
-            st.execute("PRAGMA busy_timeout=5000");
-            try (ResultSet rs = st.executeQuery("SELECT 1")) { /* OK en clair */ }
-            migratePlainToEncrypted(cPlain, keyBytes);
-        } catch (SQLException ex2) {
-            try {
-                Path bad = dbPath.resolveSibling(dbPath.getFileName() + ".corrupt." + System.currentTimeMillis());
-                Files.move(dbPath, bad);
-            } catch (Exception ignore) {}
+        // Helper de détection d'en-tête SQLite clair
+        // (ajouté plus bas dans cette classe)
+
+        if (looksPlainSQLite(dbPath)) {
+            try (Connection cPlain = DriverManager.getConnection("jdbc:sqlite:" + dbPath.toAbsolutePath());
+                 Statement st = cPlain.createStatement()) {
+                st.execute("PRAGMA foreign_keys=ON");
+                st.execute("PRAGMA busy_timeout=5000");
+                st.executeQuery("SELECT 1");
+                migratePlainToEncrypted(cPlain, keyBytes);
+            } catch (SQLException ex2) {
+                try {
+                    Path bad = dbPath.resolveSibling(dbPath.getFileName() + ".corrupt." + System.currentTimeMillis());
+                    Files.move(dbPath, bad);
+                } catch (Exception ignore) {}
+            }
+            openPool(keyBytes);
+            return;
         }
-        openPool(keyBytes);
+        throw new SQLException("Base chiffrée ou illisible. Mot de passe incorrect ? Fichier: " + dbPath);
     }
 
-    private static boolean isNotADB(SQLException e) {
-        String m = e.getMessage();
-        return m != null && (m.contains("NOTADB") || m.contains("file is not a database"));
+    private static boolean isNotADB(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String m = t.getMessage();
+            if (m == null) continue;
+            m = m.toLowerCase(java.util.Locale.ROOT);
+            if (m.contains("notadb") || m.contains("file is not a database")
+                    || m.contains("file is encrypted or is not a database")) return true;
+        }
+        return false;
+    }
+
+    // Détection d'en-tête SQLite clair
+    private static boolean looksPlainSQLite(Path p) {
+        try (var in = java.nio.file.Files.newInputStream(p)) {
+            byte[] hdr = in.readNBytes(16);
+            return new String(hdr, java.nio.charset.StandardCharsets.US_ASCII)
+                    .startsWith("SQLite format 3");
+        } catch (Exception e) { return false; }
     }
 
     private void migratePlainToEncrypted(Connection plainConn, byte[] keyBytes) throws SQLException {
         String hex = java.util.HexFormat.of().formatHex(keyBytes);
         Path tmp = dbPath.resolveSibling(dbPath.getFileName() + ".enc.tmp");
+        try { Files.deleteIfExists(tmp); } catch (Exception ignore) {}
         try (Statement st = plainConn.createStatement()) {
             st.execute("ATTACH DATABASE '" + tmp.toAbsolutePath().toString().replace("'", "''")
                     + "' AS encrypted KEY \"x'" + hex + "'\"");

@@ -85,6 +85,12 @@ Ce document précise comment travailler efficacement avec l’agent IA sur ce d�
 - « Explique puis corrige l’erreur d’auth SMTP affichée lors des rappels ».
 - « Ajoute un export PDF des factures impayées par période ».
 
+## `instructions.md` (prioritaire)
+- Ce dépôt contient un fichier `instructions.md` où le propriétaire place ses prompts/consignes.
+- Lorsque l'utilisateur le demande, l'agent DOIT suivre et appliquer à la lettre ce qui est écrit dans `instructions.md` pour ce projet, sans s'écarter ni extrapoler.
+- En cas de conflit avec des pratiques générales, considérer `instructions.md` comme source d'autorité pour ce dépôt, sauf instruction explicite contraire donnée par l'utilisateur dans l'échange en cours.
+- Avant d'implémenter une demande mentionnant `instructions.md`, s'y référer systématiquement et exécuter précisément les étapes indiquées.
+
 ## Commandes utiles (rappel)
 - Lancer: `mvn javafx:run`
 - Packager: `mvn package`
@@ -93,4 +99,3 @@ Ce document précise comment travailler efficacement avec l’agent IA sur ce d�
 ---
 
 Si vous souhaitez, je peux aussi: (a) ajouter un gabarit de tests unitaires ciblant `CryptoUtils`/`TokenCrypto`/`DB`, (b) documenter l’UX des dialogues mail (captures), (c) ajouter une checklist CI légère (format/lint/compile).
-
