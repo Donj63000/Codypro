@@ -15,7 +15,10 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.sql.*;
-import java.time.*;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
@@ -188,6 +191,53 @@ public class DB implements ConnectionProvider {
         addMissingColumns(c);
     }
 
+    // ---------- Helpers dates ----------
+    private static Long parseFrDateMillis(String fr) {
+        if (fr == null || fr.isBlank()) return null;
+        try {
+            LocalDate ld = LocalDate.parse(fr, DATE_FR);
+            return ld.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        } catch (Exception ignore) {
+            return null;
+        }
+    }
+
+    // ---------- Helpers reflection tolérants aux noms d'accesseurs ----------
+    private static String callString(Object o, String... candidates) {
+        for (String name : candidates) {
+            try {
+                Method m = o.getClass().getMethod(name);
+                Object v = m.invoke(o);
+                return v == null ? null : v.toString();
+            } catch (Exception ignore) {}
+        }
+        return null;
+    }
+
+    private static Long callLong(Object o, String... candidates) {
+        for (String name : candidates) {
+            try {
+                Method m = o.getClass().getMethod(name);
+                Object v = m.invoke(o);
+                if (v == null) return null;
+                if (v instanceof Number n) return n.longValue();
+                return Long.valueOf(v.toString());
+            } catch (Exception ignore) {}
+        }
+        return null;
+    }
+
+    // Spécifiques à ServiceRow (essaie getX(), sinon x())
+    private static String svcDesc(org.example.model.ServiceRow s) {
+        return callString(s, "getDescription", "desc");
+    }
+    private static String svcDate(org.example.model.ServiceRow s) {
+        return callString(s, "getDate", "date");
+    }
+    private static Long svcDateTs(org.example.model.ServiceRow s) {
+        return callLong(s, "getDateTs", "dateTs");
+    }
+
     public List<Prestataire> list(String filter) {
         String sql = """
                 SELECT p.*,
@@ -266,8 +316,8 @@ public class DB implements ConnectionProvider {
             ps.setString(4, p.getEmail());
             ps.setInt(5, p.getNote());
             ps.setString(6, p.getDateContrat());
-            if (p.getDateContratTs() == null) ps.setNull(7, Types.BIGINT);
-            else ps.setLong(7, p.getDateContratTs());
+            Long ts = parseFrDateMillis(p.getDateContrat());
+            if (ts == null) ps.setNull(7, Types.BIGINT); else ps.setLong(7, ts);
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) { if (rs.next()) return rs.getInt(1); }
             try (Statement s = c.createStatement(); ResultSet r2 = s.executeQuery("SELECT last_insert_rowid()")) {
@@ -296,8 +346,8 @@ public class DB implements ConnectionProvider {
             ps.setString(4, p.getEmail());
             ps.setInt(5, p.getNote());
             ps.setString(6, p.getDateContrat());
-            if (p.getDateContratTs() == null) ps.setNull(7, Types.BIGINT);
-            else ps.setLong(7, p.getDateContratTs());
+            Long ts = parseFrDateMillis(p.getDateContrat());
+            if (ts == null) ps.setNull(7, Types.BIGINT); else ps.setLong(7, ts);
             ps.setInt(8, p.getId());
             if (ps.executeUpdate() != 1) throw new SQLException("Aucune ligne mise à jour");
         } catch (SQLException e) {
@@ -370,10 +420,15 @@ public class DB implements ConnectionProvider {
     """;
         try (Connection c = getConnection();
              PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            String desc = svcDesc(s);
+            String date = svcDate(s);
+            Long   ts   = svcDateTs(s);
+            if (ts == null) ts = parseFrDateMillis(date);
+
             ps.setInt(1, prestataireId);
-            ps.setString(2, s.getDescription());
-            ps.setString(3, s.getDate());
-            if (s.getDateTs()==null) ps.setNull(4, Types.BIGINT); else ps.setLong(4, s.getDateTs());
+            ps.setString(2, desc);
+            ps.setString(3, date);
+            if (ts == null) ps.setNull(4, Types.BIGINT); else ps.setLong(4, ts);
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) { if (rs.next()) return rs.getInt(1); }
             try (Statement s2 = c.createStatement(); ResultSet r2 = s2.executeQuery("SELECT last_insert_rowid()")) {
@@ -386,9 +441,14 @@ public class DB implements ConnectionProvider {
     public void updateService(ServiceRow s) {
         String sql = "UPDATE services SET description=?, date=?, date_ts=? WHERE id=?";
         try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, s.getDescription());
-            ps.setString(2, s.getDate());
-            if (s.getDateTs()==null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, s.getDateTs());
+            String desc = svcDesc(s);
+            String date = svcDate(s);
+            Long   ts   = svcDateTs(s);
+            if (ts == null) ts = parseFrDateMillis(date);
+
+            ps.setString(1, desc);
+            ps.setString(2, date);
+            if (ts == null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, ts);
             ps.setInt(4, s.getId());
             ps.executeUpdate();
         } catch (SQLException e) { throw new RuntimeException(e); }
