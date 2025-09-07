@@ -10,8 +10,10 @@ import javafx.scene.control.ButtonType;
 import javafx.stage.Stage;
 import org.example.dao.AuthDB;
 import org.example.dao.DB;
+import org.example.dao.DbBootstrap;
 import org.example.dao.MailPrefsDAO;
 import org.example.dao.UserDB;
+import org.example.dao.SecureDB;
 import org.example.gui.LoginDialog;
 import org.example.gui.MainView;
 import org.example.gui.RegisterDialog;
@@ -26,7 +28,6 @@ import org.example.security.AuthService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.crypto.SecretKey;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.ResultSet;
@@ -75,13 +76,43 @@ public final class MainApp extends Application {
                 return;
             }
 
-            Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", session.username() + ".db");
+            AuthService.Session sess = session;
+            byte[] key = sess.key().getEncoded();
+
+            Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db");
             Files.createDirectories(dbFile.getParent());
             log.info("DB path = {}", dbFile);
             userDb = new UserDB(dbFile.toString());
-            userDb.openOrRepair(session.key().getEncoded());
-            dao = new org.example.dao.SecureDB(userDb::connection, session.userId(), session.key());
-            launchUI(stage, session.key());
+            userDb.openOrRepair(key);
+
+            DB dao = new SecureDB(userDb::getConnection, sess.userId(), sess.key());
+            this.dao = dao;
+            mailPrefsDao = new MailPrefsDAO(dao, sess.key());
+
+            DbBootstrap.ensureSchema(dao, userDb);
+
+            view = new MainView(stage, dao, mailPrefsDao);
+            Scene sc = new Scene(view.getRoot(), 920, 600);
+            if (Boolean.getBoolean("app.safeUi")) sc.getStylesheets().clear();
+            else ThemeManager.apply(sc);
+            stage.setScene(sc);
+            stage.setTitle("Gestion des Prestataires");
+            stage.show();
+
+            scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "rappel-mailer");
+                t.setDaemon(true);
+                return t;
+            });
+            scheduler.scheduleAtFixedRate(this::envoyerRappels, 1, 60, TimeUnit.MINUTES);
+
+            try {
+                smtpRelay = new LocalSmtpRelay(mailPrefsDao, 2525);
+                smtpRelay.start();
+                System.out.println("[SMTP-Relay] Démarré sur localhost:2525");
+            } catch (Exception ex) {
+                System.err.println("[SMTP-Relay] Impossible de démarrer: " + ex.getMessage());
+            }
         } catch (Exception ex) {
             ex.printStackTrace();
             showError("Erreur au démarrage: " + ex.getMessage());
@@ -102,35 +133,6 @@ public final class MainApp extends Application {
         }
     }
 
-    private void launchUI(Stage stage, SecretKey key) {
-        mailPrefsDao = new MailPrefsDAO(dao, key);
-        view = new MainView(stage, dao, mailPrefsDao);
-        stage.setTitle("Gestion des Prestataires");
-        Scene sc = new Scene(view.getRoot(), 920, 600);
-        if (Boolean.getBoolean("app.safeUi")) {
-            sc.getStylesheets().clear();
-        } else {
-            ThemeManager.apply(sc);
-        }
-        stage.setScene(sc);
-        stage.show();
-
-        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "rappel-mailer");
-            t.setDaemon(true);
-            return t;
-        });
-        scheduler.scheduleAtFixedRate(this::envoyerRappels, 1, 60, TimeUnit.MINUTES);
-
-        // Démarre un relais SMTP local pour faciliter les tests (localhost:2525)
-        try {
-            smtpRelay = new LocalSmtpRelay(mailPrefsDao, 2525);
-            smtpRelay.start();
-            System.out.println("[SMTP-Relay] Démarré sur localhost:2525");
-        } catch (Exception ex) {
-            System.err.println("[SMTP-Relay] Impossible de démarrer: " + ex.getMessage());
-        }
-    }
 
     private void envoyerRappels() {
         try {
