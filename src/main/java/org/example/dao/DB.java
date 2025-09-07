@@ -15,14 +15,10 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.sql.*;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 public class DB implements ConnectionProvider {
 
@@ -257,8 +253,69 @@ public class DB implements ConnectionProvider {
         }
     }
 
-    // Wrappers to match prompt.txt naming (optional aliases)
-    public void deletePrestataire(int prestataireId) { delete(prestataireId); }
+    public int insertPrestataire(Prestataire p) {
+        String sql = """
+        INSERT INTO prestataires(nom, societe, telephone, email, note, date_contrat, date_contrat_ts)
+        VALUES(?,?,?,?,?,?,?)
+    """;
+        try (Connection c = getConnection();
+             PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, p.getNom());
+            ps.setString(2, p.getSociete());
+            ps.setString(3, p.getTelephone());
+            ps.setString(4, p.getEmail());
+            ps.setInt(5, p.getNote());
+            ps.setString(6, p.getDateContrat());
+            if (p.getDateContratTs() == null) ps.setNull(7, Types.BIGINT);
+            else ps.setLong(7, p.getDateContratTs());
+            ps.executeUpdate();
+            try (ResultSet rs = ps.getGeneratedKeys()) { if (rs.next()) return rs.getInt(1); }
+            try (Statement s = c.createStatement(); ResultSet r2 = s.executeQuery("SELECT last_insert_rowid()")) {
+                if (r2.next()) return r2.getInt(1);
+            }
+            throw new SQLException("ID non généré");
+        } catch (SQLException e) {
+            String m = e.getMessage();
+            if (m != null && (m.contains("UNIQUE") || m.contains("unique"))) {
+                throw new IllegalArgumentException("Un prestataire avec ce nom existe déjà.");
+            }
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void updatePrestataire(Prestataire p) {
+        String sql = """
+        UPDATE prestataires SET
+            nom=?, societe=?, telephone=?, email=?, note=?, date_contrat=?, date_contrat_ts=?
+        WHERE id=?
+    """;
+        try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, p.getNom());
+            ps.setString(2, p.getSociete());
+            ps.setString(3, p.getTelephone());
+            ps.setString(4, p.getEmail());
+            ps.setInt(5, p.getNote());
+            ps.setString(6, p.getDateContrat());
+            if (p.getDateContratTs() == null) ps.setNull(7, Types.BIGINT);
+            else ps.setLong(7, p.getDateContratTs());
+            ps.setInt(8, p.getId());
+            if (ps.executeUpdate() != 1) throw new SQLException("Aucune ligne mise à jour");
+        } catch (SQLException e) {
+            String m = e.getMessage();
+            if (m != null && (m.contains("UNIQUE") || m.contains("unique"))) {
+                throw new IllegalArgumentException("Un prestataire avec ce nom existe déjà.");
+            }
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void deletePrestataire(int id) {
+        try (Connection c = getConnection();
+             PreparedStatement ps = c.prepareStatement("DELETE FROM prestataires WHERE id=?")) {
+            ps.setInt(1, id);
+            ps.executeUpdate();
+        } catch (SQLException e) { throw new RuntimeException(e); }
+    }
 
     public Prestataire findPrestataire(int id) {
         try (Connection conn = getConnection();
@@ -304,6 +361,123 @@ public class DB implements ConnectionProvider {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public int insertService(int prestataireId, ServiceRow s) {
+        String sql = """
+        INSERT INTO services(prestataire_id, description, date, date_ts)
+        VALUES(?,?,?,?)
+    """;
+        try (Connection c = getConnection();
+             PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt(1, prestataireId);
+            ps.setString(2, s.getDescription());
+            ps.setString(3, s.getDate());
+            if (s.getDateTs()==null) ps.setNull(4, Types.BIGINT); else ps.setLong(4, s.getDateTs());
+            ps.executeUpdate();
+            try (ResultSet rs = ps.getGeneratedKeys()) { if (rs.next()) return rs.getInt(1); }
+            try (Statement s2 = c.createStatement(); ResultSet r2 = s2.executeQuery("SELECT last_insert_rowid()")) {
+                if (r2.next()) return r2.getInt(1);
+            }
+            throw new SQLException("ID service non généré");
+        } catch (SQLException e) { throw new RuntimeException(e); }
+    }
+
+    public void updateService(ServiceRow s) {
+        String sql = "UPDATE services SET description=?, date=?, date_ts=? WHERE id=?";
+        try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, s.getDescription());
+            ps.setString(2, s.getDate());
+            if (s.getDateTs()==null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, s.getDateTs());
+            ps.setInt(4, s.getId());
+            ps.executeUpdate();
+        } catch (SQLException e) { throw new RuntimeException(e); }
+    }
+
+    public void deleteService(int id) {
+        try (Connection c = getConnection();
+             PreparedStatement ps = c.prepareStatement("DELETE FROM services WHERE id=?")) {
+            ps.setInt(1, id);
+            ps.executeUpdate();
+        } catch (SQLException e) { throw new RuntimeException(e); }
+    }
+
+    public int insertFacture(int prestataireId, Facture f) {
+        String sql = """
+        INSERT INTO factures(prestataire_id, description, echeance, echeance_ts,
+                             montant_ht, tva_pct, montant_tva, montant_ttc, devise, paye,
+                             date_paiement, date_paiement_ts, preavis_envoye)
+        VALUES(?,?,?,?,?,?,?,?,?,?, ?, ?, 0)
+    """;
+        try (Connection c = getConnection();
+             PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt(1, prestataireId);
+            ps.setString(2, f.getDescription());
+            ps.setString(3, f.getEcheance());
+            if (f.getEcheanceTs()==null) ps.setNull(4, Types.BIGINT); else ps.setLong(4, f.getEcheanceTs());
+            ps.setBigDecimal(5, f.getMontantHt());
+            ps.setBigDecimal(6, f.getTvaPct());
+            ps.setBigDecimal(7, f.getMontantTva());
+            ps.setBigDecimal(8, f.getMontantTtc());
+            ps.setString(9, f.getDevise()==null?"EUR":f.getDevise());
+            ps.setInt(10, f.isPaye()?1:0);
+            ps.setString(11, f.getDatePaiement());
+            if (f.getDatePaiementTs()==null) ps.setNull(12, Types.BIGINT); else ps.setLong(12, f.getDatePaiementTs());
+            ps.executeUpdate();
+            try (ResultSet rs = ps.getGeneratedKeys()) { if (rs.next()) return rs.getInt(1); }
+            try (Statement s2 = c.createStatement(); ResultSet r2 = s2.executeQuery("SELECT last_insert_rowid()")) {
+                if (r2.next()) return r2.getInt(1);
+            }
+            throw new SQLException("ID facture non généré");
+        } catch (SQLException e) { throw new RuntimeException(e); }
+    }
+
+    public void updateFacture(Facture f) {
+        String sql = """
+        UPDATE factures SET description=?, echeance=?, echeance_ts=?,
+               montant_ht=?, tva_pct=?, montant_tva=?, montant_ttc=?, devise=?,
+               paye=?, date_paiement=?, date_paiement_ts=?
+        WHERE id=?
+    """;
+        try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, f.getDescription());
+            ps.setString(2, f.getEcheance());
+            if (f.getEcheanceTs()==null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, f.getEcheanceTs());
+            ps.setBigDecimal(4, f.getMontantHt());
+            ps.setBigDecimal(5, f.getTvaPct());
+            ps.setBigDecimal(6, f.getMontantTva());
+            ps.setBigDecimal(7, f.getMontantTtc());
+            ps.setString(8, f.getDevise()==null?"EUR":f.getDevise());
+            ps.setInt(9, f.isPaye()?1:0);
+            ps.setString(10, f.getDatePaiement());
+            if (f.getDatePaiementTs()==null) ps.setNull(11, Types.BIGINT); else ps.setLong(11, f.getDatePaiementTs());
+            ps.setInt(12, f.getId());
+            ps.executeUpdate();
+        } catch (SQLException e) { throw new RuntimeException(e); }
+    }
+
+    public void deleteFacture(int id) {
+        try (Connection c = getConnection();
+             PreparedStatement ps = c.prepareStatement("DELETE FROM factures WHERE id=?")) {
+            ps.setInt(1, id);
+            ps.executeUpdate();
+        } catch (SQLException e) { throw new RuntimeException(e); }
+    }
+
+    public void toggleFacturePayee(int id, boolean payee, Long datePaiementTs, String datePaiementFr) {
+        String sql = "UPDATE factures SET paye=?, date_paiement=?, date_paiement_ts=? WHERE id=?";
+        try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, payee?1:0);
+            if (payee) {
+                ps.setString(2, datePaiementFr);
+                if (datePaiementTs==null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, datePaiementTs);
+            } else {
+                ps.setNull(2, Types.VARCHAR);
+                ps.setNull(3, Types.BIGINT);
+            }
+            ps.setInt(4, id);
+            ps.executeUpdate();
+        } catch (SQLException e) { throw new RuntimeException(e); }
     }
 
     public void addFacture(Facture f) {
@@ -630,6 +804,14 @@ public class DB implements ConnectionProvider {
             st.executeUpdate("UPDATE factures SET montant_tva=montant_ht*tva_pct/100 WHERE montant_tva=0");
             st.executeUpdate("UPDATE factures SET montant_ttc=montant_ht+montant_tva WHERE montant_ttc=0");
             st.executeUpdate("UPDATE factures SET devise='EUR' WHERE devise IS NULL");
+        }
+    }
+
+    public void ensureIndexes(Connection c) throws SQLException {
+        try (Statement st = c.createStatement()) {
+            st.execute("CREATE INDEX IF NOT EXISTS idx_prestataires_nom ON prestataires(nom)");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_prestataires_mail ON prestataires(email)");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_prestataires_tel ON prestataires(telephone)");
         }
     }
 }

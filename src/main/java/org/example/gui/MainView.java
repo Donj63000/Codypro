@@ -12,6 +12,7 @@ import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
+import javafx.scene.layout.Region;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import org.example.dao.DB;
@@ -20,6 +21,9 @@ import org.example.model.Facture;
 import org.example.model.Prestataire;
 import org.example.model.ServiceRow;
 import org.example.pdf.PDF;
+import org.example.gui.PrestataireFormDialog;
+import org.example.gui.ServiceFormDialog;
+import org.example.gui.FactureFormDialog;
 
 import java.text.NumberFormat;
 import java.util.List;
@@ -61,6 +65,9 @@ public final class MainView {
         this.stage = stage;
         this.dao = dao;
         this.mailDao = mailDao;
+
+        java.util.stream.Stream.of(btnAdd, btnEdit, btnDelete, btnExport, btnRefresh)
+              .forEach(b -> b.setMinWidth(Region.USE_PREF_SIZE));
 
         // Top: title + mail settings
         MenuBar menuBar = new MenuBar();
@@ -165,6 +172,19 @@ public final class MainView {
 
         table.getColumns().setAll(cNom, cSoc, cTel, cMail, cNote, cImpayes);
         table.getSelectionModel().selectedItemProperty().addListener((obs, old, cur) -> showDetails(cur));
+
+        // Double‑clic -> modifier
+        table.setRowFactory(tv -> {
+            TableRow<Prestataire> row = new TableRow<>();
+            row.setOnMouseClicked(e -> { if (e.getClickCount()==2 && !row.isEmpty()) onEdit(); });
+            return row;
+        });
+        // Raccourcis
+        table.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> {
+            if (e.isControlDown() && e.getCode()==KeyCode.N) { onAdd(); e.consume(); }
+            else if (e.getCode()==KeyCode.ENTER) { onEdit(); e.consume(); }
+            else if (e.getCode()==KeyCode.DELETE) { onDelete(); e.consume(); }
+        });
     }
 
     private Node buildDetailsPanel() {
@@ -315,39 +335,48 @@ public final class MainView {
     // ============================ ACTIONS ============================
 
     private void onAdd() {
-        Alert a = new Alert(Alert.AlertType.INFORMATION, "Dialogue d'ajout non implémenté ici.");
-        ThemeManager.apply(a);
-        a.showAndWait();
+        PrestataireFormDialog dlg = new PrestataireFormDialog(null);
+        ThemeManager.apply(dlg);
+        dlg.showAndWait().ifPresent(p -> exec.submit(() -> {
+            try { int id = dao.insertPrestataire(p); p.setId(id);
+                Platform.runLater(() -> { items.add(p); table.getSelectionModel().select(p); });
+            } catch (Exception ex) { Platform.runLater(() -> showError(ex)); }
+        }));
     }
 
     private void onEdit() {
-        Prestataire p = table.getSelectionModel().getSelectedItem();
-        if (p == null) return;
-        Alert a = new Alert(Alert.AlertType.INFORMATION, "Dialogue de modification non implémenté ici pour " + p.getNom());
-        ThemeManager.apply(a);
-        a.showAndWait();
+        Prestataire sel = table.getSelectionModel().getSelectedItem(); if (sel == null) return;
+        PrestataireFormDialog dlg = new PrestataireFormDialog(clonePrestataire(sel));
+        ThemeManager.apply(dlg);
+        dlg.showAndWait().ifPresent(p -> exec.submit(() -> {
+            try { p.setId(sel.getId()); dao.updatePrestataire(p);
+                Platform.runLater(() -> { int i = items.indexOf(sel); items.set(i, p); table.getSelectionModel().select(p); });
+            } catch (Exception ex) { Platform.runLater(() -> showError(ex)); }
+        }));
     }
 
     private void onDelete() {
-        Prestataire p = table.getSelectionModel().getSelectedItem();
-        if (p == null) return;
-        Alert conf = new Alert(Alert.AlertType.CONFIRMATION, "Supprimer " + p.getNom() + " ?", ButtonType.YES, ButtonType.NO);
-        ThemeManager.apply(conf);
-        if (conf.showAndWait().orElse(ButtonType.NO) == ButtonType.YES) {
-            exec.submit(() -> {
-                try {
-                    dao.deletePrestataire(p.getId());
-                    Platform.runLater(() -> reload(tfSearch.getText().trim()));
-                } catch (Exception ex) {
-                    Platform.runLater(() -> {
-                        Alert err = new Alert(Alert.AlertType.ERROR, "Suppression impossible : " + ex.getMessage());
-                        ThemeManager.apply(err);
-                        err.showAndWait();
-                    });
-                }
-            });
-        }
+        Prestataire sel = table.getSelectionModel().getSelectedItem(); if (sel == null) return;
+        if (!confirm("Supprimer " + sel.getNom() + " et ses données ?")) return;
+        exec.submit(() -> {
+            try { dao.deletePrestataire(sel.getId());
+                Platform.runLater(() -> { items.remove(sel); clearDetails(); });
+            } catch (Exception ex) { Platform.runLater(() -> showError(ex)); }
+        });
     }
+
+    private static Prestataire clonePrestataire(Prestataire p) {
+        Prestataire c = new Prestataire();
+        c.setId(p.getId()); c.setNom(p.getNom()); c.setSociete(p.getSociete());
+        c.setTelephone(p.getTelephone()); c.setEmail(p.getEmail()); c.setNote(p.getNote());
+        c.setDateContrat(p.getDateContrat()); c.setDateContratTs(p.getDateContratTs());
+        return c;
+    }
+    private boolean confirm(String msg) {
+        Alert a = new Alert(Alert.AlertType.CONFIRMATION, msg, ButtonType.YES, ButtonType.NO);
+        ThemeManager.apply(a); return a.showAndWait().orElse(ButtonType.NO)==ButtonType.YES;
+    }
+    private void showError(Exception ex) { new Alert(Alert.AlertType.ERROR, ex.getMessage()).showAndWait(); }
 
     private void onExportPdf() {
         Prestataire p = table.getSelectionModel().getSelectedItem();
