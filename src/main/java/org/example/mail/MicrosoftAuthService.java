@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import org.example.dao.MailPrefsDAO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.awt.Desktop;
 import java.io.OutputStream;
@@ -18,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 
 public final class MicrosoftAuthService implements OAuthService {
+    private static final Logger log = LoggerFactory.getLogger(MicrosoftAuthService.class);
     private static final String AUTH_URL   = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
     private static final String TOKEN_URL  = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
     private static final String SCOPE      = "offline_access https://outlook.office.com/SMTP.Send";
@@ -30,13 +33,25 @@ public final class MicrosoftAuthService implements OAuthService {
     private String accessToken;
 
     public MicrosoftAuthService(MailPrefsDAO dao) {
+        this(dao, dao.load());
+    }
+
+    public MicrosoftAuthService(MailPrefsDAO dao, MailPrefs prefs) {
         this.dao = dao;
-        this.prefs = dao.load();
+        this.prefs = prefs;
     }
 
     public MicrosoftAuthService(MailPrefs prefs) {
         this.dao = null;
         this.prefs = prefs;
+    }
+
+    public MailPrefs prefs() {
+        return prefs;
+    }
+
+    public boolean hasDao() {
+        return dao != null;
     }
 
     @Override
@@ -69,6 +84,7 @@ public final class MicrosoftAuthService implements OAuthService {
                 }
             });
             srv.start();
+            log.debug("[MS OAuth] local HTTP receiver started");
 
             int port = srv.getAddress().getPort();
             String redirect = "http://localhost:" + port + "/oauth";
@@ -78,6 +94,7 @@ public final class MicrosoftAuthService implements OAuthService {
                     + "&redirect_uri=" + enc(redirect)
                     + "&scope=" + enc(SCOPE)
                     + "&prompt=consent";
+            log.debug("[MS OAuth] opening browser for user consent (redirect={})", redirect);
             Desktop.getDesktop().browse(URI.create(open));
 
             String code = codeFuture.join();
@@ -97,6 +114,7 @@ public final class MicrosoftAuthService implements OAuthService {
             long expiry = System.currentTimeMillis() / 1000 + j.path("expires_in").asLong();
             prefs = updatePrefs(refresh, expiry);
             if (dao != null) dao.save(prefs);
+            log.debug("[MS OAuth] received tokens; expiry={}s", j.path("expires_in").asLong());
             return port;
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -118,6 +136,7 @@ public final class MicrosoftAuthService implements OAuthService {
         if (refresh.isBlank()) throw new IllegalStateException("No refresh token");
         String[] client = splitClient(prefs.oauthClient());
         try {
+            log.debug("[MS OAuth] refreshing access token");
             HttpRequest req = HttpRequest.newBuilder(URI.create(TOKEN_URL))
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(
@@ -132,6 +151,7 @@ public final class MicrosoftAuthService implements OAuthService {
             long expiry = System.currentTimeMillis() / 1000 + j.path("expires_in").asLong();
             prefs = updatePrefs(refresh, expiry);
             if (dao != null) dao.save(prefs);
+            log.debug("[MS OAuth] refresh OK; expires in {}s", j.path("expires_in").asLong());
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

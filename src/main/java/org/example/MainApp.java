@@ -85,11 +85,19 @@ public final class MainApp extends Application {
             userDb = new UserDB(dbFile.toString());
             userDb.openOrRepair(key);
 
-            DB dao = new SecureDB(userDb::getConnection, sess.userId(), sess.key());
+            DB dao = initSecureDbWithRepair(userDb, sess, key);
             this.dao = dao;
             mailPrefsDao = new MailPrefsDAO(dao, sess.key());
 
-            DbBootstrap.ensureSchema(dao, userDb);
+            try {
+                DbBootstrap.ensureSchema(dao, userDb);
+            } catch (Exception ex) {
+                if (looksLikeNotADB(ex)) {
+                    userDb.close();
+                    userDb.openOrRepair(key);
+                    DbBootstrap.ensureSchema(dao, userDb);
+                } else throw ex;
+            }
 
             view = new MainView(stage, dao, mailPrefsDao);
             Scene sc = new Scene(view.getRoot(), 920, 600);
@@ -109,13 +117,13 @@ public final class MainApp extends Application {
             try {
                 smtpRelay = new LocalSmtpRelay(mailPrefsDao, 2525);
                 smtpRelay.start();
-                System.out.println("[SMTP-Relay] Démarré sur localhost:2525");
+                System.out.println("[SMTP-Relay] Demarre sur localhost:2525");
             } catch (Exception ex) {
-                System.err.println("[SMTP-Relay] Impossible de démarrer: " + ex.getMessage());
+                System.err.println("[SMTP-Relay] Impossible de demarrer: " + ex.getMessage());
             }
         } catch (Exception ex) {
             ex.printStackTrace();
-            showError("Erreur au démarrage: " + ex.getMessage());
+            showError("Erreur au demarrage: " + ex.getMessage());
             Platform.exit();
         }
     }
@@ -125,7 +133,7 @@ public final class MainApp extends Application {
             Optional<AuthService.Session> opt = new LoginDialog(sec).showAndWait();
             if (opt.isPresent()) return opt;
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                    "Voulez‑vous quitter l’application ?", ButtonType.YES, ButtonType.NO);
+                    "Voulez-vous quitter l'application ?", ButtonType.YES, ButtonType.NO);
             ThemeManager.apply(confirm);
             if (confirm.showAndWait().orElse(ButtonType.NO) == ButtonType.YES) {
                 return Optional.empty();
@@ -133,6 +141,25 @@ public final class MainApp extends Application {
         }
     }
 
+
+    private DB initSecureDbWithRepair(UserDB userDb, AuthService.Session sess, byte[] keyBytes) throws Exception {
+        RuntimeException last = null;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                return new SecureDB(userDb::getConnection, sess.userId(), sess.key());
+            } catch (RuntimeException ex) {
+                last = ex;
+                if (attempt == 0 && looksLikeNotADB(ex)) {
+                    log.warn("[MainApp] NOTADB detected while opening user DB for {}. Attempting repair.", sess.username());
+                    userDb.close();
+                    userDb.openOrRepair(keyBytes);
+                    continue;
+                }
+                throw ex;
+            }
+        }
+        throw last;
+    }
 
     private void envoyerRappels() {
         try {
@@ -154,9 +181,9 @@ public final class MainApp extends Application {
                             Prestataire pr = dao.findPrestataire(f.getPrestataireId());
                             if (pr == null) continue;
                             String dest = cfg.copyToSelf().isBlank() ? cfg.from() : cfg.copyToSelf();
-                            String subject = "Échéance dans " + slot + " h – facture " + f.getId();
+                            String subject = "Echeance dans " + slot + " h - facture " + f.getId();
                             String body = String.format(java.util.Locale.FRANCE,
-                                    "La facture %d (%.2f €) pour %s arrive à échéance le %s.",
+                                    "La facture %d (%.2f EUR) pour %s arrive a echeance le %s.",
                                     f.getId(), f.getMontantTtc(), pr.getNom(), f.getEcheanceFr());
                             Mailer.send(mailPrefsDao, cfg, dest, subject, body);
                         } catch (Exception ex) {
@@ -203,11 +230,25 @@ public final class MainApp extends Application {
             if (t instanceof AuthenticationFailedException || t instanceof TokenResponseException) {
                 mailPrefsDao.invalidateOAuth();
                 Platform.runLater(() ->
-                        showError("Authentification expirée; veuillez reconfigurer votre compte e‑mail."));
+                        showError("Authentification expiree; veuillez reconfigurer votre compte e-mail."));
                 return;
             }
         }
         ex.printStackTrace();
+    }
+
+    private static boolean looksLikeNotADB(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String m = t.getMessage();
+            if (m == null) continue;
+            String s = m.toLowerCase(java.util.Locale.ROOT);
+            if (s.contains("notadb")) return true;
+            if (s.contains("file is not a database")) return true;
+            if (s.contains("not a database file")) return true;
+            if (s.contains("file opened that is not a database")) return true;
+            if (s.contains("file is encrypted or is not a database")) return true;
+        }
+        return false;
     }
 
     private static void showError(String msg) {
@@ -225,3 +266,6 @@ public final class MainApp extends Application {
         if (smtpRelay != null) smtpRelay.stop();
     }
 }
+
+
+

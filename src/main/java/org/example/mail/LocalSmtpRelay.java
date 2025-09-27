@@ -1,6 +1,8 @@
 package org.example.mail;
 
 import org.example.dao.MailPrefsDAO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.subethamail.smtp.MessageContext;
 import org.subethamail.smtp.MessageHandler;
 import org.subethamail.smtp.MessageHandlerFactory;
@@ -17,6 +19,7 @@ import java.util.List;
  * via la configuration MailPrefs (classique ou OAuth selon provider).
  */
 public final class LocalSmtpRelay {
+    private static final Logger log = LoggerFactory.getLogger(LocalSmtpRelay.class);
     private final SMTPServer server;
     private final MailPrefsDAO dao;
     private final int port;
@@ -29,8 +32,8 @@ public final class LocalSmtpRelay {
         this.server.setSoftwareName("Prestataires Local SMTP Relay");
     }
 
-    public void start() { server.start(); }
-    public void stop()  { server.stop();  }
+    public void start() { server.start(); log.info("[SMTP-Relay] started on localhost:{}", port); }
+    public void stop()  { server.stop();  log.info("[SMTP-Relay] stopped"); }
 
     private final class RelayFactory implements MessageHandlerFactory {
         @Override public MessageHandler create(MessageContext ctx) {
@@ -63,12 +66,15 @@ public final class LocalSmtpRelay {
                 if ("localhost".equals(host) || "127.0.0.1".equals(host)) {
                     // Evite une boucle si la conf pointe vers ce même relais. On sauvegarde le message.
                     dumpToOutbox(msg);
+                    org.slf4j.LoggerFactory.getLogger(LocalSmtpRelay.class).info("[SMTP-Relay] Message reçu et archivé (pas de relais car host=localhost)");
                     System.out.println("[SMTP-Relay] Message reçu et archivé (pas de relais car host=localhost).");
                 } else {
                     Mailer.send(dao, cfg, msg);
+                    org.slf4j.LoggerFactory.getLogger(LocalSmtpRelay.class).info("[SMTP-Relay] Message relayé: from={}, rcpt={}, via={}", from, recipients, cfg.provider());
                     System.out.println("[SMTP-Relay] Message relayé: from=" + from + ", rcpt=" + recipients + ", via=" + cfg.provider());
                 }
             } catch (Exception e) {
+                org.slf4j.LoggerFactory.getLogger(LocalSmtpRelay.class).error("[SMTP-Relay] Error while relaying: {}", e.getMessage(), e);
                 e.printStackTrace();
                 throw new RuntimeException(e);
             }

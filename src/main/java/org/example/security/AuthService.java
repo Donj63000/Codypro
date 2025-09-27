@@ -3,6 +3,8 @@ package org.example.security;
 import org.example.dao.AuthDB;
 import org.example.dao.UserDB;
 import org.example.dao.SqlcipherUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.crypto.SecretKey;
 import java.nio.file.Path;
@@ -18,6 +20,7 @@ public final class AuthService {
     private static final int    KDF_ITER_NEW  = 180_000;
     private static final int    SALT_BYTES    = 16;
     private static final SecureRandom RNG     = new SecureRandom();
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private final AuthDB store;
 
@@ -35,25 +38,36 @@ public final class AuthService {
             ps.setInt   (4, KDF_ITER_REG);
             ps.executeUpdate();
         }
+        log.debug("[Auth] user registered: {}", username);
     }
 
     public Session login(String username, char[] pwd) throws Exception {
-        try (PreparedStatement ps = store.c().prepareStatement(
-                "SELECT id,pwd_hash,kdf_salt,kdf_iters FROM users WHERE username=?")) {
-            ps.setString(1, username);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return null;
-                String hash = rs.getString("pwd_hash");
-                if (!CryptoUtils.verifyPwd(pwd, hash)) return null;
-                byte[] salt = rs.getBytes("kdf_salt");
-                int    it   = rs.getInt("kdf_iters");
-                SecretKey key = CryptoUtils.deriveKey(pwd, salt, it);
-                Arrays.fill(pwd, '\0');
-                return new Session(rs.getInt("id"), key, username);
+        try {
+            try (PreparedStatement ps = store.c().prepareStatement(
+                    "SELECT id,pwd_hash,kdf_salt,kdf_iters FROM users WHERE username=?")) {
+                ps.setString(1, username);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        log.debug("[Auth] login failed (unknown user): {}", username);
+                        return null;
+                    }
+                    String hash = rs.getString("pwd_hash");
+                    if (!CryptoUtils.verifyPwd(pwd, hash)) {
+                        log.debug("[Auth] login failed (bad password): {}", username);
+                        return null;
+                    }
+                    byte[] salt = rs.getBytes("kdf_salt");
+                    int    it   = rs.getInt("kdf_iters");
+                    SecretKey key = CryptoUtils.deriveKey(pwd, salt, it);
+                    int uid = rs.getInt("id");
+                    log.debug("[Auth] login OK: {} (id={})", username, uid);
+                    return new Session(uid, key, username);
+                }
             }
+        } finally {
+            Arrays.fill(pwd, '\0');
         }
     }
-
     public String getUsername(int userId) throws Exception {
         try (PreparedStatement ps = store.c().prepareStatement(
                 "SELECT username FROM users WHERE id=?")) {
@@ -63,7 +77,6 @@ public final class AuthService {
             }
         }
     }
-
     public void changePassword(int userId, char[] oldPwd, char[] newPwd) throws Exception {
         Session sess = login(getUsername(userId), oldPwd);
         if (sess == null) throw new IllegalArgumentException("Mot de passe incorrect");
@@ -91,7 +104,9 @@ public final class AuthService {
             ps.setInt   (4, userId);
             ps.executeUpdate();
         }
+        log.debug("[Auth] password changed for user id={} ({})", userId, sess.username());
     }
 
     public record Session(int userId, SecretKey key, String username) {}
 }
+

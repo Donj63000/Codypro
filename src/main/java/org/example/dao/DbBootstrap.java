@@ -1,12 +1,16 @@
 package org.example.dao;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.sql.*;
 
 public final class DbBootstrap {
+    private static final Logger log = LoggerFactory.getLogger(DbBootstrap.class);
     private DbBootstrap() {}
 
     public static void ensureSchema(DB dao, UserDB userDb) {
         try (Connection c = userDb.getConnection(); Statement st = c.createStatement()) {
+            log.debug("[DbBootstrap] Ensuring schema and migrations");
             st.execute("PRAGMA foreign_keys=ON");
             st.execute("PRAGMA busy_timeout=5000");
 
@@ -94,6 +98,7 @@ public final class DbBootstrap {
 
             // Index
             dao.ensureIndexes(c);
+            log.debug("[DbBootstrap] Schema ensured; indexes created");
 
         } catch (SQLException e) {
             throw new RuntimeException("Init DB/migrations : " + e.getMessage(), e);

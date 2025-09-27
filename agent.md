@@ -23,7 +23,7 @@ Ce document précise comment travailler efficacement avec l’agent IA sur ce d�
 - Packager: `mvn package` (JAR + libs runtime dans `target/lib`)
 - Dépendances SQLite (SQLCipher): `mvn -q dependency:tree -Dincludes=io.github.willena:sqlite-jdbc`
 
-## Invariants et sécurité (à respecter strictement)
+e## Invariants et sécurité (à respecter strictement)
 - Chiffrement des données utilisateur: ne jamais commuter la DB en clair. Les champs sensibles (mots de passe SMTP, tokens OAuth) passent par `TokenCrypto`/`CryptoUtils` (AES‑GCM).
 - Auth locale: ne pas altérer Argon2/PBKDF2 ni diminuer les itérations par défaut.
 - OAuth:
