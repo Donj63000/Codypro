@@ -1,5 +1,6 @@
 package org.example.dao;
 
+import org.example.util.AppPaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConfig;
@@ -16,8 +17,7 @@ public final class AuthDB implements AutoCloseable {
     private final Connection conn;
 
     public static Path defaultFile() {
-        Path dir = Path.of(System.getProperty("user.home"), ".prestataires");
-        return dir.resolve("auth.db");
+        return AppPaths.authDb();
     }
 
     public AuthDB() throws SQLException { this(defaultFile().toString()); }

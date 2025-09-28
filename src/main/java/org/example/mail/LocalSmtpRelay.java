@@ -1,6 +1,7 @@
 package org.example.mail;
 
 import org.example.dao.MailPrefsDAO;
+import org.example.util.AppPaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.subethamail.smtp.MessageContext;
@@ -85,8 +86,7 @@ public final class LocalSmtpRelay {
 
     private static void dumpToOutbox(MimeMessage msg) {
         try {
-            java.nio.file.Path dir = java.nio.file.Path.of(System.getProperty("user.home"), ".prestataires", "outbox");
-            java.nio.file.Files.createDirectories(dir);
+            java.nio.file.Path dir = AppPaths.outboxDir();
             String name = java.time.LocalDateTime.now().toString().replace(':','-') + ".eml";
             java.nio.file.Path file = dir.resolve(name);
             try (java.io.OutputStream os = java.nio.file.Files.newOutputStream(file)) { msg.writeTo(os); }

@@ -14,6 +14,7 @@ import org.example.dao.DbBootstrap;
 import org.example.dao.MailPrefsDAO;
 import org.example.dao.UserDB;
 import org.example.dao.SecureDB;
+import org.example.util.AppPaths;
 import org.example.gui.LoginDialog;
 import org.example.gui.MainView;
 import org.example.gui.RegisterDialog;
@@ -58,6 +59,14 @@ public final class MainApp extends Application {
             e.printStackTrace();
         });
         System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
+        try {
+            assertSqliteEncryption();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            showError("Erreur au demarrage: " + ex.getMessage());
+            Platform.exit();
+            return;
+        }
         try (AuthDB auth = new AuthDB()) {
             AuthService sec = new AuthService(auth);
 
@@ -86,7 +95,7 @@ public final class MainApp extends Application {
             AuthService.Session sess = session;
             byte[] key = sess.key().getEncoded();
 
-            log.info("DB path = {}", Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db"));
+            log.info("DB path = {}", AppPaths.userDb(sess.username()));
 
             DB dao = initSecureDbWithRepair(userDb, sess, key);
             this.dao = dao;
@@ -275,7 +284,7 @@ public final class MainApp extends Application {
     }
 
     private boolean openUserDatabase(AuthService.Session session, byte[] key, boolean allowRetry) throws Exception {
-        Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", session.username() + ".db");
+        Path dbFile = AppPaths.userDb(session.username());
         Files.createDirectories(dbFile.getParent());
         UserDB candidate = new UserDB(dbFile.toString());
         try {
@@ -306,6 +315,33 @@ public final class MainApp extends Application {
             }
         }
         return false;
+    }
+
+    private static void assertSqliteEncryption() throws Exception {
+        try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite::memory:");
+             var st = c.createStatement();
+             var rs = st.executeQuery("pragma compile_options")) {
+
+            boolean hasCodec = false;
+            while (rs.next()) {
+                var opt = rs.getString(1);
+                System.out.println("compile_option: " + opt);
+                if (opt.contains("HAS_CODEC") || opt.contains("SSEE") || opt.contains("SEE"))
+                    hasCodec = true;
+            }
+            // Essayons aussi de lire la version du codec
+            try (var rs2 = st.executeQuery("pragma cipher_version")) {
+                if (rs2.next()) {
+                    System.out.println("cipher_version=" + rs2.getString(1));
+                    hasCodec = hasCodec || rs2.getString(1) != null;
+                }
+            } catch (Exception ignore) {}
+
+            if (!hasCodec) {
+                throw new IllegalStateException("Driver SQLite SANS chiffrement chargé. " +
+                    "Assure-toi d'utiliser io.github.willena:sqlite-jdbc (SSE) et pas org.xerial.");
+            }
+        }
     }
 
     @Override
