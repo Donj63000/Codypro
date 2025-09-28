@@ -3,11 +3,11 @@ package org.example.security;
 import org.example.dao.AuthDB;
 import org.example.dao.UserDB;
 import org.example.dao.SqlcipherUtil;
+import org.example.util.AppPaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.crypto.SecretKey;
-import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -87,8 +87,7 @@ public final class AuthService {
         Arrays.fill(oldPwd, '\0');
         Arrays.fill(newPwd, '\0');
 
-        Path db = Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db");
-        try (UserDB udb = new UserDB(db.toString())) {
+        try (UserDB udb = new UserDB(AppPaths.userDb(sess.username()).toString())) {
             udb.openPool(sess.key().getEncoded());
             Connection c = udb.connection();
             SqlcipherUtil.disableWalForRekey(c);
