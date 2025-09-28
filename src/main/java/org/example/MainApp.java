@@ -66,8 +66,15 @@ public final class MainApp extends Application {
                  ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM users")) {
                 if (rs.next() && rs.getInt(1) == 0) {
                     session = new RegisterDialog(sec).showAndWait().orElse(null);
+                    if (session != null) {
+                        byte[] key = session.key().getEncoded();
+                        if (!openUserDatabase(session, key, false)) {
+                            Platform.exit();
+                            return;
+                        }
+                    }
                 } else {
-                    session = promptLoginLoop(sec).orElse(null);
+                    session = authenticateUntilDbOpen(sec).orElse(null);
                 }
             }
 
@@ -79,11 +86,7 @@ public final class MainApp extends Application {
             AuthService.Session sess = session;
             byte[] key = sess.key().getEncoded();
 
-            Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db");
-            Files.createDirectories(dbFile.getParent());
-            log.info("DB path = {}", dbFile);
-            userDb = new UserDB(dbFile.toString());
-            userDb.openOrRepair(key);
+            log.info("DB path = {}", Path.of(System.getProperty("user.home"), ".prestataires", sess.username() + ".db"));
 
             DB dao = initSecureDbWithRepair(userDb, sess, key);
             this.dao = dao;
@@ -255,6 +258,54 @@ public final class MainApp extends Application {
         Alert a = new Alert(Alert.AlertType.ERROR, msg, ButtonType.OK);
         ThemeManager.apply(a);
         a.showAndWait();
+    }
+
+    private Optional<AuthService.Session> authenticateUntilDbOpen(AuthService sec) throws Exception {
+        while (true) {
+            Optional<AuthService.Session> opt = promptLoginLoop(sec);
+            if (opt.isEmpty()) {
+                return Optional.empty();
+            }
+            AuthService.Session session = opt.get();
+            byte[] key = session.key().getEncoded();
+            if (openUserDatabase(session, key, true)) {
+                return Optional.of(session);
+            }
+        }
+    }
+
+    private boolean openUserDatabase(AuthService.Session session, byte[] key, boolean allowRetry) throws Exception {
+        Path dbFile = Path.of(System.getProperty("user.home"), ".prestataires", session.username() + ".db");
+        Files.createDirectories(dbFile.getParent());
+        UserDB candidate = new UserDB(dbFile.toString());
+        try {
+            candidate.openOrRepair(key);
+            if (userDb != null) {
+                userDb.close();
+            }
+            userDb = candidate;
+            return true;
+        } catch (Exception ex) {
+            candidate.close();
+            if (allowRetry && isRecoverableDbOpenError(ex)) {
+                log.warn("[MainApp] Unable to open user DB for {}: {}", session.username(), ex.getMessage());
+                showError(ex.getMessage() != null ? ex.getMessage() :
+                        "Base chiffrée ou illisible. Veuillez vérifier votre mot de passe.");
+                return false;
+            }
+            throw ex;
+        }
+    }
+
+    private static boolean isRecoverableDbOpenError(Throwable ex) {
+        if (looksLikeNotADB(ex)) return true;
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            String msg = t.getMessage();
+            if (msg != null && msg.contains("Base chiffrée ou illisible")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
