@@ -82,25 +82,24 @@ public final class UserDB implements AutoCloseable {
 
             boolean plain = looksPlainSQLite(dbPath);
             if (plain) {
-                try (Connection cPlain = DriverManager.getConnection("jdbc:sqlite:" + dbPath.toAbsolutePath())) {
+                try (Connection cPlain = DriverManager.getConnection("jdbc:sqlite:" + dbPath.toAbsolutePath());
+                     Statement st = cPlain.createStatement()) {
+                    st.execute("PRAGMA foreign_keys=ON");
+                    st.execute("PRAGMA busy_timeout=5000");
+                    st.executeQuery("SELECT 1");
                     migratePlainToEncrypted(cPlain, keyBytes);
                     openPool(keyBytes);
                     return;
                 } catch (SQLException ex2) {
                     log.warn("[UserDB] Migration plain -> encrypted failed: {}", oneLine(ex2));
                     try {
-                        long ts = System.currentTimeMillis();
-                        Path bad = dbPath.resolveSibling(dbPath.getFileName() + ".corrupt." + ts);
+                        Path bad = dbPath.resolveSibling(dbPath.getFileName() + ".corrupt." + System.currentTimeMillis());
                         Files.move(dbPath, bad);
-                        log.info("[UserDB] Moved unreadable DB to {}", bad.getFileName());
                     } catch (Exception ignore) {}
-                    createFreshEncrypted(keyBytes);
-                    openPool(keyBytes);
-                    return;
                 }
             }
 
-            throw new SQLException("Base chiffrée ou illisible. Mot de passe incorrect ? Fichier: " + dbPath, e);
+            throw new SQLException("Base chiffrée ou illisible. Mot de passe incorrect ? Fichier: " + dbPath);
         }
     }
 
