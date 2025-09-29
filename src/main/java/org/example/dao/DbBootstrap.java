@@ -9,7 +9,14 @@ public final class DbBootstrap {
     private DbBootstrap() {}
 
     public static void ensureSchema(DB dao, UserDB userDb) {
-        try (Connection c = userDb.getConnection(); Statement st = c.createStatement()) {
+        Connection c;
+        try {
+            c = userDb.getConnection();
+        } catch (SQLException e) {
+            throw new RuntimeException("Init DB/migrations : " + e.getMessage(), e);
+        }
+
+        try (Statement st = c.createStatement()) {
             log.debug("[DbBootstrap] Ensuring schema and migrations");
             st.execute("PRAGMA foreign_keys=ON");
             st.execute("PRAGMA busy_timeout=5000");
