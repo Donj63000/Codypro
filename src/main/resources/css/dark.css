@@ -1,10 +1,5 @@
-@font-face {
-    font-family: "Inter";
-    src: url("/fonts/Inter-Regular.ttf");
-}
-
 .root {
-    -fx-font-family: "Inter","Segoe UI",sans-serif;
+    -fx-font-family: "Segoe UI","Roboto","SF Pro Text",sans-serif;
     -fx-font-size: 14px;
     -fx-base: #1d1f21;
     -fx-background: #1d1f21;
