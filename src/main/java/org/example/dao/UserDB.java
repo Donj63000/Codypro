@@ -20,11 +20,35 @@ public final class UserDB implements AutoCloseable {
         log.debug("[UserDB] path={}", this.dbPath.toAbsolutePath());
     }
 
-    // Ouvre une connexion unique avec la clé appliquée dès la création
+    // Ouvre une connexion unique avec la cle appliquee des la creation
     public synchronized void openPool(byte[] keyBytes) throws SQLException {
         close();
         String hexKey = HexFormat.of().formatHex(keyBytes);
+        boolean needsInit = false;
+        try { needsInit = Files.notExists(dbPath) || Files.size(dbPath) == 0L; } catch (Exception ignore) {}
+        if (needsInit) log.debug("[UserDB] creating new encrypted DB at {}", dbPath.toAbsolutePath());
+        SQLException sseFailure = null;
+        try {
+            conn = openWithMode(hexKey, org.sqlite.SQLiteConfig.HexKeyMode.SSE, needsInit);
+            log.debug("[UserDB] openPool OK (WAL, FK ON, mode=SSE)");
+            return;
+        } catch (SQLException ex) {
+            if (!isNotADB(ex)) {
+                throw ex;
+            }
+            sseFailure = ex;
+            log.warn("[UserDB] SSE key rejected for {}: {}", dbPath.getFileName(), oneLine(ex));
+        }
+        try {
+            conn = openWithMode(hexKey, org.sqlite.SQLiteConfig.HexKeyMode.SQLCIPHER, needsInit);
+            log.info("[UserDB] openPool OK (WAL, FK ON, mode=SQLCIPHER - legacy)");
+        } catch (SQLException ex) {
+            if (sseFailure != null) ex.addSuppressed(sseFailure);
+            throw ex;
+        }
+    }
 
+    private Connection openWithMode(String hexKey, org.sqlite.SQLiteConfig.HexKeyMode mode, boolean needsInit) throws SQLException {
         org.sqlite.SQLiteConfig sc = new org.sqlite.SQLiteConfig();
         sc.setBusyTimeout(5000);
         sc.setSharedCache(true);
@@ -32,28 +56,29 @@ public final class UserDB implements AutoCloseable {
         sc.setJournalMode(org.sqlite.SQLiteConfig.JournalMode.WAL);
         sc.enforceForeignKeys(true);
         sc.setOpenMode(org.sqlite.SQLiteOpenMode.FULLMUTEX);
-        // Clé SQLCipher/SQLiteMC appliquée AVANT toute validation
-        sc.setPragma(org.sqlite.SQLiteConfig.Pragma.HEXKEY_MODE, "SSE");
+        sc.setHexKeyMode(mode);
+        sc.setPragma(org.sqlite.SQLiteConfig.Pragma.HEXKEY_MODE, mode.name());
         sc.setPragma(org.sqlite.SQLiteConfig.Pragma.KEY, hexKey);
-
-        boolean needsInit = false;
-        try { needsInit = Files.notExists(dbPath) || Files.size(dbPath) == 0L; } catch (Exception ignore) {}
-        if (needsInit) log.debug("[UserDB] creating new encrypted DB at {}", dbPath.toAbsolutePath());
-
-        conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath.toAbsolutePath(), sc.toProperties());
-
-        try (Statement st = conn.createStatement()) {
-            st.execute("PRAGMA foreign_keys=ON");
-            st.execute("PRAGMA busy_timeout=5000");
-            if (needsInit) {
-                try { st.execute("CREATE TABLE IF NOT EXISTS __init__(x INTEGER)"); } catch (SQLException ignore) {}
-                try { st.execute("DROP TABLE IF EXISTS __init__"); } catch (SQLException ignore) {}
+        String url = "jdbc:sqlite:" + dbPath.toAbsolutePath();
+        Connection c = DriverManager.getConnection(url, sc.toProperties());
+        try {
+            try (Statement st = c.createStatement()) {
+                st.execute("PRAGMA foreign_keys=ON");
+                st.execute("PRAGMA busy_timeout=5000");
+                try { st.execute("PRAGMA cipher_compatibility=4"); } catch (SQLException ignore) {}
+                if (needsInit) {
+                    try { st.execute("CREATE TABLE IF NOT EXISTS __init__(x INTEGER)"); } catch (SQLException ignore) {}
+                    try { st.execute("DROP TABLE IF EXISTS __init__"); } catch (SQLException ignore) {}
+                }
+                try (ResultSet rs = st.executeQuery("SELECT count(*) FROM sqlite_master")) {
+                    if (!rs.next()) throw new SQLException("sqlite_master not readable");
+                }
             }
-            try (ResultSet rs = st.executeQuery("SELECT count(*) FROM sqlite_master")) {
-                if (!rs.next()) throw new SQLException("sqlite_master not readable");
-            }
+            return c;
+        } catch (SQLException | RuntimeException ex) {
+            try { c.close(); } catch (Exception ignore) {}
+            throw ex;
         }
-        log.debug("[UserDB] openPool OK (WAL, FK ON)");
     }
 
     // Essaie d'ouvrir; si NOTADB -> traite le cas clair/corrompu et recrée au besoin

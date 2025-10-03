@@ -318,31 +318,64 @@ public final class MainApp extends Application {
     }
 
     private static void assertSqliteEncryption() throws Exception {
-        try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite::memory:");
-             var st = c.createStatement();
-             var rs = st.executeQuery("pragma compile_options")) {
-
-            boolean hasCodec = false;
-            while (rs.next()) {
-                var opt = rs.getString(1);
-                System.out.println("compile_option: " + opt);
-                if (opt.contains("HAS_CODEC") || opt.contains("SSEE") || opt.contains("SEE"))
-                    hasCodec = true;
-            }
-            // Essayons aussi de lire la version du codec
-            try (var rs2 = st.executeQuery("pragma cipher_version")) {
-                if (rs2.next()) {
-                    System.out.println("cipher_version=" + rs2.getString(1));
-                    hasCodec = hasCodec || rs2.getString(1) != null;
+        java.nio.file.Path tmp = java.nio.file.Files.createTempFile("sqlite-enc-check", ".db");
+        byte[] keyBytes = new byte[32];
+        new java.security.SecureRandom().nextBytes(keyBytes);
+        String hexKey = java.util.HexFormat.of().formatHex(keyBytes);
+        org.sqlite.SQLiteConfig cfg = new org.sqlite.SQLiteConfig();
+        cfg.setPragma(org.sqlite.SQLiteConfig.Pragma.HEXKEY_MODE, "SSE");
+        cfg.setPragma(org.sqlite.SQLiteConfig.Pragma.KEY, hexKey);
+        String jdbcUrl = "jdbc:sqlite:" + tmp.toAbsolutePath();
+        java.util.Properties props = cfg.toProperties();
+        try {
+            try (var c = java.sql.DriverManager.getConnection(jdbcUrl, props);
+                 var st = c.createStatement()) {
+                try {
+                    st.execute("PRAGMA cipher_compatibility=4");
+                } catch (java.sql.SQLException ignore) {
                 }
-            } catch (Exception ignore) {}
+                st.execute("CREATE TABLE IF NOT EXISTS __enc_probe__(x INTEGER)");
+                st.execute("INSERT INTO __enc_probe__ VALUES (1)");
+            }
 
-            if (!hasCodec) {
-                throw new IllegalStateException("Driver SQLite SANS chiffrement chargé. " +
-                    "Assure-toi d'utiliser io.github.willena:sqlite-jdbc (SSE) et pas org.xerial.");
+            try (var c = java.sql.DriverManager.getConnection(jdbcUrl, props);
+                 var st = c.createStatement();
+                 var rs = st.executeQuery("SELECT COUNT(*) FROM __enc_probe__")) {
+                if (!rs.next() || rs.getInt(1) != 1) {
+                    throw new IllegalStateException("Lecture de la base chiffree de test impossible (cle SSE rejetee).");
+                }
+            }
+
+            boolean openedWithoutKey = false;
+            try (var c = java.sql.DriverManager.getConnection(jdbcUrl);
+                 var st = c.createStatement()) {
+                st.executeQuery("SELECT COUNT(*) FROM __enc_probe__");
+                openedWithoutKey = true;
+            } catch (java.sql.SQLException expected) {
+                openedWithoutKey = false;
+            }
+
+            if (openedWithoutKey) {
+                throw new IllegalStateException("Le driver SQLite a ouvert une base chiffree sans cle; verifie l'utilisation de io.github.willena:sqlite-jdbc (SSE).");
+            }
+        } catch (java.sql.SQLException ex) {
+            throw new IllegalStateException("Verification du chiffrement SQLite impossible: " + ex.getMessage(), ex);
+        } finally {
+            try {
+                java.nio.file.Files.deleteIfExists(tmp);
+            } catch (Exception ignore) {
+            }
+            try {
+                java.nio.file.Files.deleteIfExists(java.nio.file.Path.of(tmp.toString() + "-wal"));
+            } catch (Exception ignore) {
+            }
+            try {
+                java.nio.file.Files.deleteIfExists(java.nio.file.Path.of(tmp.toString() + "-shm"));
+            } catch (Exception ignore) {
             }
         }
     }
+
 
     @Override
     public void stop() {
