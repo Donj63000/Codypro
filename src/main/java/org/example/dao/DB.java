@@ -4,6 +4,7 @@ import org.example.model.Facture;
 import org.example.model.Prestataire;
 import org.example.model.Rappel;
 import org.example.model.ServiceRow;
+import org.example.model.ServiceStatus;
 import org.sqlite.SQLiteConfig;
 import org.sqlite.SQLiteOpenMode;
 import com.zaxxer.hikari.HikariConfig;
@@ -131,7 +132,8 @@ public class DB implements ConnectionProvider {
                         prestataire_id INTEGER REFERENCES prestataires(id) ON DELETE CASCADE,
                         description TEXT,
                         date TEXT,
-                        date_ts INTEGER
+                        date_ts INTEGER,
+                        status TEXT NOT NULL DEFAULT 'EN_ATTENTE'
                     );""");
             st.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS factures(
@@ -403,8 +405,8 @@ public class DB implements ConnectionProvider {
 
     public void add(Prestataire p) {
         String sql = """
-                INSERT INTO prestataires(nom,societe,telephone,email,note,facturation,date_contrat,date_contrat_ts)
-                VALUES(?,?,?,?,?,?,?,?)""";
+                INSERT INTO prestataires(nom,societe,telephone,email,note,facturation,service_notes,date_contrat,date_contrat_ts)
+                VALUES(?,?,?,?,?,?,?,?,?)""";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             bindPrestataire(ps, p);
@@ -417,12 +419,12 @@ public class DB implements ConnectionProvider {
     public void update(Prestataire p) {
         String sql = """
                 UPDATE prestataires SET
-                nom=?,societe=?,telephone=?,email=?,note=?,facturation=?,date_contrat=?,date_contrat_ts=?
+                nom=?,societe=?,telephone=?,email=?,note=?,facturation=?,service_notes=?,date_contrat=?,date_contrat_ts=?
                 WHERE id=?""";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             bindPrestataire(ps, p);
-            ps.setInt(9, p.getId());
+            ps.setInt(10, p.getId());
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -441,19 +443,12 @@ public class DB implements ConnectionProvider {
 
     public int insertPrestataire(Prestataire p) {
         String sql = """
-        INSERT INTO prestataires(nom, societe, telephone, email, note, date_contrat, date_contrat_ts)
-        VALUES(?,?,?,?,?,?,?)
+        INSERT INTO prestataires(nom, societe, telephone, email, note, facturation, service_notes, date_contrat, date_contrat_ts)
+        VALUES(?,?,?,?,?,?,?,?,?)
     """;
         try (Connection c = getConnection();
              PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setString(1, prestaNom(p));
-            ps.setString(2, prestaSoc(p));
-            ps.setString(3, prestaTel(p));
-            ps.setString(4, prestaMail(p));
-            ps.setInt   (5, prestaNote(p));
-            ps.setString(6, prestaContrat(p));
-            Long ts = prestaContratTs(p);
-            if (ts == null) ps.setNull(7, Types.BIGINT); else ps.setLong(7, ts);
+            bindPrestataire(ps, p);
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) { if (rs.next()) return rs.getInt(1); }
             try (Statement s = c.createStatement(); ResultSet r2 = s.executeQuery("SELECT last_insert_rowid()")) {
@@ -472,20 +467,13 @@ public class DB implements ConnectionProvider {
     public void updatePrestataire(Prestataire p) {
         String sql = """
         UPDATE prestataires SET
-            nom=?, societe=?, telephone=?, email=?, note=?, date_contrat=?, date_contrat_ts=?
+            nom=?, societe=?, telephone=?, email=?, note=?, facturation=?, service_notes=?, date_contrat=?, date_contrat_ts=?
         WHERE id=?
     """;
         try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, prestaNom(p));
-            ps.setString(2, prestaSoc(p));
-            ps.setString(3, prestaTel(p));
-            ps.setString(4, prestaMail(p));
-            ps.setInt   (5, prestaNote(p));
-            ps.setString(6, prestaContrat(p));
-            Long ts = prestaContratTs(p);
-            if (ts == null) ps.setNull(7, Types.BIGINT); else ps.setLong(7, ts);
-            ps.setInt(8, prestaId(p));
-            if (ps.executeUpdate() != 1) throw new SQLException("Aucune ligne mise à jour");
+            bindPrestataire(ps, p);
+            ps.setInt(10, prestaId(p));
+            if (ps.executeUpdate() != 1) throw new SQLException("Aucune ligne mise a jour");
         } catch (SQLException e) {
             String m = e.getMessage();
             if (m != null && (m.contains("UNIQUE") || m.contains("unique"))) {
@@ -515,22 +503,12 @@ public class DB implements ConnectionProvider {
     }
 
     public void addService(int pid, String desc) {
-        String sql = "INSERT INTO services(prestataire_id,description,date,date_ts) VALUES(?,?,?,?)";
-        LocalDate now = LocalDate.now();
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, pid);
-            ps.setString(2, desc);
-            ps.setString(3, DATE_DB.format(now));
-            ps.setLong(4, now.atStartOfDay().toEpochSecond(ZoneOffset.UTC));
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+        ServiceRow row = new ServiceRow(null, desc, DATE_FR.format(LocalDate.now()), ServiceStatus.EN_ATTENTE);
+        insertService(pid, row);
     }
 
     public List<ServiceRow> services(int pid) {
-        String sql = "SELECT description,date,date_ts FROM services WHERE prestataire_id=? ORDER BY date_ts";
+        String sql = "SELECT id, description, date, date_ts, status FROM services WHERE prestataire_id=? ORDER BY date_ts";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, pid);
@@ -539,10 +517,17 @@ public class DB implements ConnectionProvider {
             while (rs.next()) {
                 LocalDate d;
                 long ts = rs.getLong("date_ts");
-                if (rs.wasNull()) d = parseDate(rs.getString("date"));
-                else d = LocalDateTime.ofEpochSecond(ts, 0, ZoneOffset.UTC).toLocalDate();
+                boolean hasTimestamp = !rs.wasNull();
+                if (hasTimestamp) {
+                    d = LocalDateTime.ofEpochSecond(ts, 0, ZoneOffset.UTC).toLocalDate();
+                } else {
+                    d = parseDate(rs.getString("date"));
+                }
                 String dateStr = d == null ? DATE_FR.format(LocalDate.now()) : DATE_FR.format(d);
-                out.add(new ServiceRow(rs.getString("description"), dateStr));
+                ServiceStatus status = ServiceStatus.from(rs.getString("status"));
+                int id = rs.getInt("id");
+                String desc = rs.getString("description");
+                out.add(new ServiceRow(id, desc, dateStr, status));
             }
             return out;
         } catch (SQLException e) {
@@ -552,39 +537,53 @@ public class DB implements ConnectionProvider {
 
     public int insertService(int prestataireId, ServiceRow s) {
         String sql = """
-        INSERT INTO services(prestataire_id, description, date, date_ts)
-        VALUES(?,?,?,?)
+        INSERT INTO services(prestataire_id, description, date, date_ts, status)
+        VALUES(?,?,?,?,?)
     """;
         try (Connection c = getConnection();
              PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             String desc = svcDesc(s);
             String date = svcDateStr(s);
             Long   ts   = svcDateTs(s);
+            ServiceStatus status = s.status() == null ? ServiceStatus.EN_ATTENTE : s.status();
 
             ps.setInt(1, prestataireId);
             ps.setString(2, desc);
             ps.setString(3, date);
             if (ts == null) ps.setNull(4, Types.BIGINT); else ps.setLong(4, ts);
+            ps.setString(5, status.name());
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) { if (rs.next()) return rs.getInt(1); }
             try (Statement s2 = c.createStatement(); ResultSet r2 = s2.executeQuery("SELECT last_insert_rowid()")) {
                 if (r2.next()) return r2.getInt(1);
             }
-            throw new SQLException("ID service non généré");
+            throw new SQLException("ID service non genere");
         } catch (SQLException e) { throw new RuntimeException(e); }
     }
 
     public void updateService(ServiceRow s) {
-        String sql = "UPDATE services SET description=?, date=?, date_ts=? WHERE id=?";
+        String sql = "UPDATE services SET description=?, date=?, date_ts=?, status=? WHERE id=?";
         try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             String desc = svcDesc(s);
             String date = svcDateStr(s);
             Long   ts   = svcDateTs(s);
+            ServiceStatus status = s.status() == null ? ServiceStatus.EN_ATTENTE : s.status();
 
             ps.setString(1, desc);
             ps.setString(2, date);
             if (ts == null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, ts);
-            ps.setInt(4, svcId(s));
+            ps.setString(4, status.name());
+            ps.setInt(5, svcId(s));
+            ps.executeUpdate();
+        } catch (SQLException e) { throw new RuntimeException(e); }
+    }
+
+    public void updateServiceStatus(int id, ServiceStatus status) {
+        String sql = "UPDATE services SET status=? WHERE id=?";
+        try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ServiceStatus safeStatus = status == null ? ServiceStatus.EN_ATTENTE : status;
+            ps.setString(1, safeStatus.name());
+            ps.setInt(2, id);
             ps.executeUpdate();
         } catch (SQLException e) { throw new RuntimeException(e); }
     }
@@ -867,6 +866,7 @@ public class DB implements ConnectionProvider {
                 rs.getString("email"),
                 rs.getInt("note"),
                 rs.getString("facturation"),
+                rs.getString("service_notes"),
                 date);
         p.setImpayes(imp);
         return p;
@@ -910,28 +910,41 @@ public class DB implements ConnectionProvider {
         ps.setString(4, prestaMail(p));
         ps.setInt(5, prestaNote(p));
         ps.setString(6, getStr(p, "getFacturation", "facturation"));
+        ps.setString(7, getStr(p, "getServiceNotes", "serviceNotes"));
         String date = prestaContrat(p);
         Long   ts   = prestaContratTs(p);
-        ps.setString(7, date);
-        if (ts == null) ps.setNull(8, Types.BIGINT); else ps.setLong(8, ts);
+        ps.setString(8, date);
+        if (ts == null) ps.setNull(9, Types.BIGINT); else ps.setLong(9, ts);
     }
 
     private static LocalDate parseDate(String raw) {
         if (raw == null || raw.isBlank()) return null;
+        String trimmed = raw.trim();
+        if (trimmed.matches("\\d+")) {
+            long epoch = Long.parseLong(trimmed);
+            if (epoch >= 1_000_000_000_000L) epoch /= 1000L;
+            return LocalDateTime.ofEpochSecond(epoch, 0, ZoneOffset.UTC).toLocalDate();
+        }
         try {
-            return LocalDate.parse(raw, DATE_DB);
+            return LocalDate.parse(trimmed, DATE_DB);
         } catch (DateTimeParseException ex) {
-            return LocalDate.parse(raw, DATE_FR);
+            return LocalDate.parse(trimmed, DATE_FR);
         }
     }
 
     private static void addMissingColumns(Connection c) throws SQLException {
         ensureTs(c, "prestataires", "date_contrat_ts", "date_contrat");
         ensureTs(c, "services", "date_ts", "date");
+        ensureColumn(c, "services", "status", "TEXT NOT NULL DEFAULT 'EN_ATTENTE'");
         ensureTs(c, "factures", "echeance_ts", "echeance");
+        ensureColumn(c, "prestataires", "facturation", "TEXT");
+        ensureColumn(c, "prestataires", "service_notes", "TEXT");
         ensureTs(c, "factures", "date_paiement_ts", "date_paiement");
         ensureTs(c, "rappels", "date_envoi_ts", "date_envoi");
         ensureMoney(c);
+        try (Statement st = c.createStatement()) {
+            st.executeUpdate("UPDATE services SET status='EN_ATTENTE' WHERE status IS NULL OR TRIM(status)=''");
+        }
     }
 
     private static void upgradeCopyToSelf(Connection c) throws SQLException {

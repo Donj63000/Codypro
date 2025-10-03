@@ -12,8 +12,9 @@ public final class Prestataire implements Serializable {
     private final StringProperty  telephone   = new SimpleStringProperty();
     private final StringProperty  email       = new SimpleStringProperty();
     private final IntegerProperty note        = new SimpleIntegerProperty();
-    private final StringProperty  facturation = new SimpleStringProperty();
-    private final StringProperty  dateContrat = new SimpleStringProperty();
+    private final StringProperty  facturation   = new SimpleStringProperty();
+    private final StringProperty  serviceNotes  = new SimpleStringProperty();
+    private final StringProperty  dateContrat   = new SimpleStringProperty();
     private final IntegerProperty impayes     = new SimpleIntegerProperty();
 
     public Prestataire(int id,
@@ -23,6 +24,7 @@ public final class Prestataire implements Serializable {
                        String email,
                        int    note,
                        String facturation,
+                       String serviceNotes,
                        String dateContrat) {
 
         this.id.set(id);
@@ -32,6 +34,7 @@ public final class Prestataire implements Serializable {
         this.email.set(clean(email));
         this.note.set(clamp(note, 0, 100));
         this.facturation.set(clean(facturation));
+        this.serviceNotes.set(clean(serviceNotes));
         this.dateContrat.set(clean(dateContrat));
     }
 
@@ -46,7 +49,9 @@ public final class Prestataire implements Serializable {
     public String getEmail()       { return email.get(); }
     public int    getNote()        { return note.get(); }
     public String getFacturation() { return facturation.get(); }
-    public String getDateContrat() { return dateContrat.get(); }
+    public String getServiceType()  { return getFacturation(); }
+    public String getServiceNotes() { return serviceNotes.get(); }
+    public String getDateContrat()  { return dateContrat.get(); }
     public int    getImpayes()     { return impayes.get(); }
     public void   setImpayes(int v){ impayes.set(Math.max(v, 0)); }
 
@@ -56,8 +61,9 @@ public final class Prestataire implements Serializable {
     public StringProperty  telephoneProperty()   { return telephone; }
     public StringProperty  emailProperty()       { return email; }
     public IntegerProperty noteProperty()        { return note; }
-    public StringProperty  facturationProperty() { return facturation; }
-    public StringProperty  dateContratProperty() { return dateContrat; }
+    public StringProperty  facturationProperty()   { return facturation; }
+    public StringProperty  serviceNotesProperty()  { return serviceNotes; }
+    public StringProperty  dateContratProperty()   { return dateContrat; }
     public IntegerProperty impayesProperty()     { return impayes; }
 
     public Prestataire copyWithoutId() {
@@ -68,6 +74,7 @@ public final class Prestataire implements Serializable {
                 getEmail(),
                 getNote(),
                 getFacturation(),
+                getServiceNotes(),
                 getDateContrat());
     }
 }

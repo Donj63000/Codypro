@@ -26,7 +26,7 @@ public final class PDF {
         if (file != null) {
             try {
                 generateFiche(file, p);
-                info("Fiche PDF exportée");
+                info("Fiche PDF exportee");
             } catch (Exception e) {
                 error(e.getMessage());
             }
@@ -38,7 +38,7 @@ public final class PDF {
         if (file != null) {
             try {
                 generateHistorique(file, dao);
-                info("Historique PDF exporté");
+                info("Historique PDF exportee");
             } catch (Exception e) {
                 error(e.getMessage());
             }
@@ -51,14 +51,19 @@ public final class PDF {
              FileOutputStream out = new FileOutputStream(file.toFile())) {
             PdfWriter.getInstance(doc, out);
             doc.open();
-            doc.add(new Paragraph("Fiche Prestataire — " + p.getNom(),
+            doc.add(new Paragraph("Fiche Prestataire - " + p.getNom(),
                     FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18)));
             doc.add(new Paragraph(" "));
-            doc.add(new Paragraph("Société     : " + p.getSociete()));
-            doc.add(new Paragraph("Téléphone   : " + p.getTelephone()));
+            doc.add(new Paragraph("Societe     : " + p.getSociete()));
+            doc.add(new Paragraph("Telephone   : " + p.getTelephone()));
             doc.add(new Paragraph("Email       : " + p.getEmail()));
             doc.add(new Paragraph("Note        : " + p.getNote() + " %"));
-            doc.add(new Paragraph("Facturation : " + p.getFacturation()));
+            String type = p.getFacturation();
+            doc.add(new Paragraph("Type de service : " + (type == null || type.isBlank() ? "Non renseigne" : type)));
+            String notes = p.getServiceNotes();
+            if (notes != null && !notes.isBlank()) {
+                doc.add(new Paragraph("Description : " + notes));
+            }
             doc.add(new Paragraph("Date contrat: " + p.getDateContrat()));
         }
     }
@@ -81,7 +86,7 @@ public final class PDF {
                     dao.services(p.getId()).forEach(sr -> {
                         try {
                             doc.add(new Paragraph(sr.date()
-                                    + " — " + p.getNom()
+                                    + " - " + p.getNom()
                                     + " (" + p.getSociete() + ") : "
                                     + sr.desc()));
                         } catch (Exception ex) {

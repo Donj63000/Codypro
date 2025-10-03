@@ -2,7 +2,10 @@ package org.example.gui;
 
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
+import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.collections.FXCollections;
+import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
@@ -20,14 +23,17 @@ import org.example.dao.MailPrefsDAO;
 import org.example.model.Facture;
 import org.example.model.Prestataire;
 import org.example.model.ServiceRow;
+import org.example.model.ServiceStatus;
 import org.example.pdf.PDF;
 import org.example.gui.PrestataireFormDialog;
 import org.example.gui.ServiceFormDialog;
 import org.example.gui.FactureFormDialog;
 
 import java.text.NumberFormat;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -50,6 +56,15 @@ public final class MainView {
     private final GridPane fichePane = new GridPane();
     private final TableView<ServiceRow> tvServices = new TableView<>();
     private final TableView<Facture> tvFactures = new TableView<>();
+    private final Label serviceTypeValue = new Label();
+    private final TextArea serviceNotesArea = new TextArea();
+    private final VBox serviceInfoPane = new VBox(6);
+    private final HBox serviceStatusBar = new HBox(8);
+    private final ToggleGroup detailsToggleGroup = new ToggleGroup();
+    private final ToggleButton btnDetailFiche = createDetailButton("Fiche");
+    private final ToggleButton btnDetailServices = createDetailButton("Services");
+    private final ToggleButton btnDetailFactures = createDetailButton("Factures");
+    private final StackPane detailStack = new StackPane();
 
     // background
     private final ExecutorService exec = Executors.newSingleThreadExecutor(r -> {
@@ -73,7 +88,7 @@ public final class MainView {
         MenuBar menuBar = new MenuBar();
         Menu menuFile = new Menu("Fichier");
         Menu menuTools = new Menu("Outils");
-        MenuItem miMail = new MenuItem("Paramètres e-mail");
+        MenuItem miMail = new MenuItem("Parametres e-mail");
         miMail.setOnAction(e -> MailQuickSetupDialog.open(this.stage, this.mailDao));
         menuTools.getItems().addAll(miMail);
         menuBar.getMenus().addAll(menuFile, menuTools);
@@ -81,7 +96,7 @@ public final class MainView {
         HBox header = new HBox(new Label("Gestion des Prestataires"));
         header.setPadding(new Insets(8));
         header.setSpacing(8);
-        Button bMail = new Button("Paramètres e-mail");
+        Button bMail = new Button("Parametres e-mail");
         bMail.getStyleClass().add("accent");
         bMail.setOnAction(e -> MailQuickSetupDialog.open(this.stage, this.mailDao));
         header.getChildren().add(bMail);
@@ -114,7 +129,7 @@ public final class MainView {
     }
 
     private HBox buildToolbar() {
-        tfSearch.setPromptText("Rechercher (nom, société, email, téléphone)...");
+        tfSearch.setPromptText("Rechercher (nom, societe, email, telephone)...");
         tfSearch.setPrefColumnCount(32);
 
         searchDebounce.setOnFinished(e -> reload(tfSearch.getText().trim()));
@@ -148,11 +163,11 @@ public final class MainView {
         cNom.setMinWidth(140);
         cNom.setCellValueFactory(cd -> cd.getValue().nomProperty());
 
-        TableColumn<Prestataire, String> cSoc = new TableColumn<>("Société");
+        TableColumn<Prestataire, String> cSoc = new TableColumn<>("Societe");
         cSoc.setMinWidth(120);
         cSoc.setCellValueFactory(cd -> cd.getValue().societeProperty());
 
-        TableColumn<Prestataire, String> cTel = new TableColumn<>("Téléphone");
+        TableColumn<Prestataire, String> cTel = new TableColumn<>("Telephone");
         cTel.setMinWidth(110);
         cTel.setCellValueFactory(cd -> cd.getValue().telephoneProperty());
 
@@ -165,7 +180,7 @@ public final class MainView {
         cNote.setMaxWidth(80);
         cNote.setCellValueFactory(cd -> cd.getValue().noteProperty());
 
-        TableColumn<Prestataire, Number> cImpayes = new TableColumn<>("Impayés");
+        TableColumn<Prestataire, Number> cImpayes = new TableColumn<>("Impayes");
         cImpayes.setMinWidth(80);
         cImpayes.setMaxWidth(100);
         cImpayes.setCellValueFactory(cd -> cd.getValue().impayesProperty());
@@ -173,7 +188,7 @@ public final class MainView {
         table.getColumns().setAll(cNom, cSoc, cTel, cMail, cNote, cImpayes);
         table.getSelectionModel().selectedItemProperty().addListener((obs, old, cur) -> showDetails(cur));
 
-        // Double‑clic -> modifier
+        // Double clic -> modifier
         table.setRowFactory(tv -> {
             TableRow<Prestataire> row = new TableRow<>();
             row.setOnMouseClicked(e -> { if (e.getClickCount()==2 && !row.isEmpty()) onEdit(); });
@@ -194,8 +209,8 @@ public final class MainView {
         fichePane.setPadding(new Insets(8));
         int r = 0;
         fichePane.add(row("Nom"), 0, r);        fichePane.add(rowValue(), 1, r++);
-        fichePane.add(row("Société"), 0, r);    fichePane.add(rowValue(), 1, r++);
-        fichePane.add(row("Téléphone"), 0, r);  fichePane.add(rowValue(), 1, r++);
+        fichePane.add(row("Societe"), 0, r);    fichePane.add(rowValue(), 1, r++);
+        fichePane.add(row("Telephone"), 0, r);  fichePane.add(rowValue(), 1, r++);
         fichePane.add(row("Email"), 0, r);      fichePane.add(rowValue(), 1, r++);
         fichePane.add(row("Note"), 0, r);       fichePane.add(rowValue(), 1, r++);
         fichePane.add(row("Contrat"), 0, r);    fichePane.add(rowValue(), 1, r++);
@@ -206,37 +221,126 @@ public final class MainView {
         TableColumn<ServiceRow, String> csDate = new TableColumn<>("Date");
         csDate.setMinWidth(90);
         csDate.setCellValueFactory(cd -> new javafx.beans.property.ReadOnlyStringWrapper(cd.getValue().date()));
+
+        TableColumn<ServiceRow, ServiceStatus> csStatus = new TableColumn<>("Statut");
+        csStatus.setMinWidth(120);
+        csStatus.setCellValueFactory(cd -> new ReadOnlyObjectWrapper<>(cd.getValue().status()));
+        csStatus.setCellFactory(col -> new TableCell<>() {
+            private final Label pill = new Label();
+            {
+                pill.getStyleClass().add("status-pill");
+                setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
+            }
+            @Override protected void updateItem(ServiceStatus status, boolean empty) {
+                super.updateItem(status, empty);
+                if (empty || status == null) {
+                    setGraphic(null);
+                } else {
+                    pill.setText(status.label());
+                    pill.getStyleClass().setAll("status-pill", "status-pill--" + status.cssClassSuffix());
+                    setGraphic(pill);
+                }
+            }
+        });
+
         TableColumn<ServiceRow, String> csDesc = new TableColumn<>("Description");
         csDesc.setCellValueFactory(cd -> new javafx.beans.property.ReadOnlyStringWrapper(cd.getValue().desc()));
-        tvServices.getColumns().setAll(csDate, csDesc);
+        tvServices.getColumns().setAll(csDate, csStatus, csDesc);
+
+        tvServices.getItems().addListener((ListChangeListener<ServiceRow>) change -> updateDetailCounts());
+
+        tvServices.setRowFactory(table -> {
+            TableRow<ServiceRow> row = new TableRow<>();
+            ContextMenu statusMenu = new ContextMenu();
+            for (ServiceStatus status : ServiceStatus.values()) {
+                MenuItem item = new MenuItem(status.label());
+                item.setOnAction(e -> {
+                    ServiceRow current = row.getItem();
+                    if (current != null) onChangeServiceStatus(current, status);
+                });
+                statusMenu.getItems().add(item);
+            }
+            row.contextMenuProperty().bind(Bindings.when(row.emptyProperty()).then((ContextMenu) null).otherwise(statusMenu));
+            return row;
+        });
+
+        serviceTypeValue.getStyleClass().add("service-type-value");
+        serviceTypeValue.setWrapText(true);
+        serviceNotesArea.setWrapText(true);
+        serviceNotesArea.setEditable(false);
+        serviceNotesArea.setFocusTraversable(false);
+        serviceNotesArea.setPrefRowCount(4);
+        serviceNotesArea.getStyleClass().add("details-notes");
+        serviceInfoPane.getChildren().setAll(
+                new Label("Type de service :"),
+                serviceTypeValue,
+                new Label("Description :"),
+                serviceNotesArea
+        );
+        serviceInfoPane.setVisible(false);
+        serviceInfoPane.setManaged(false);
+
+        VBox servicesPane = new VBox(12, serviceInfoPane, tvServices);
+        servicesPane.setFillWidth(true);
+        VBox.setVgrow(tvServices, Priority.ALWAYS);
 
         // FACTURES
         tvFactures.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         tvFactures.setPlaceholder(new Label("Aucune facture"));
         TableColumn<Facture, String> cfDesc = new TableColumn<>("Description");
         cfDesc.setCellValueFactory(cd -> cd.getValue().descriptionProperty());
-        TableColumn<Facture, String> cfEch = new TableColumn<>("Échéance");
+        TableColumn<Facture, String> cfEch = new TableColumn<>("Echeance");
         cfEch.setMinWidth(90);
         cfEch.setCellValueFactory(cd -> new javafx.beans.property.ReadOnlyStringWrapper(cd.getValue().getEcheanceFr()));
         TableColumn<Facture, String> cfMontant = new TableColumn<>("Montant TTC");
         cfMontant.setMinWidth(110);
         cfMontant.setCellValueFactory(cd -> new javafx.beans.property.ReadOnlyStringWrapper(money.format(
                 cd.getValue().getMontantTtc() == null ? 0.0 : cd.getValue().getMontantTtc().doubleValue())));
-        TableColumn<Facture, String> cfPaye = new TableColumn<>("Payée");
+        TableColumn<Facture, String> cfPaye = new TableColumn<>("Payee");
         cfPaye.setMinWidth(70);
         cfPaye.setMaxWidth(80);
         cfPaye.setCellValueFactory(cd -> new javafx.beans.property.ReadOnlyStringWrapper(cd.getValue().isPaye() ? "Oui" : "Non"));
         tvFactures.getColumns().setAll(cfDesc, cfEch, cfMontant, cfPaye);
 
-        Tab tFiche = new Tab("Fiche", fichePane);      tFiche.setClosable(false);
-        Tab tSrv   = new Tab("Services", tvServices);  tSrv.setClosable(false);
-        Tab tFac   = new Tab("Factures", tvFactures);  tFac.setClosable(false);
+        VBox facturesPane = new VBox(tvFactures);
+        facturesPane.setFillWidth(true);
+        VBox.setVgrow(tvFactures, Priority.ALWAYS);
 
-        TabPane tabs = new TabPane(tFiche, tSrv, tFac);
-        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        Node ficheCard = createDetailsCard(fichePane);
+        Node servicesCard = createDetailsCard(servicesPane);
+        Node facturesCard = createDetailsCard(facturesPane);
 
-        VBox right = new VBox(tabs);
-        VBox.setVgrow(tabs, Priority.ALWAYS);
+        btnDetailFiche.setUserData(ficheCard);
+        btnDetailServices.setUserData(servicesCard);
+        btnDetailFactures.setUserData(facturesCard);
+
+        detailStack.getChildren().setAll(ficheCard, servicesCard, facturesCard);
+        if (!detailStack.getStyleClass().contains("details-stack")) {
+            detailStack.getStyleClass().add("details-stack");
+        }
+        showDetailSection(ficheCard);
+
+        detailsToggleGroup.selectedToggleProperty().addListener((obs, previous, selected) -> {
+            if (selected != null) {
+                Node target = (Node) selected.getUserData();
+                if (target != null) {
+                    showDetailSection(target);
+                }
+            }
+        });
+        detailsToggleGroup.selectToggle(btnDetailFiche);
+
+        HBox toggleBar = new HBox(btnDetailFiche, btnDetailServices, btnDetailFactures);
+        toggleBar.setSpacing(6);
+        toggleBar.setAlignment(Pos.CENTER_LEFT);
+        toggleBar.getStyleClass().add("details-toggle-bar");
+        for (ToggleButton btn : new ToggleButton[]{btnDetailFiche, btnDetailServices, btnDetailFactures}) {
+            btn.setMaxWidth(Double.MAX_VALUE);
+            HBox.setHgrow(btn, Priority.ALWAYS);
+        }
+
+        VBox right = new VBox(12, toggleBar, detailStack);
+        VBox.setVgrow(detailStack, Priority.ALWAYS);
         right.setPadding(new Insets(0, 0, 0, 8));
         right.setPrefWidth(460);
         return right;
@@ -282,9 +386,18 @@ public final class MainView {
         });
     }
 
+    private void refreshCurrentServices() {
+        Prestataire current = table.getSelectionModel().getSelectedItem();
+        if (current != null) {
+            showDetails(current);
+        }
+    }
+
     private void showDetails(Prestataire p) {
         btnEdit.setDisable(p == null);
         btnDelete.setDisable(p == null);
+        btnDetailServices.setDisable(p == null);
+        btnDetailFactures.setDisable(p == null);
 
         int row = 0;
         setFicheValue(row++, p != null ? p.getNom() : "");
@@ -296,7 +409,28 @@ public final class MainView {
 
         tvServices.getItems().clear();
         tvFactures.getItems().clear();
-        if (p == null) return;
+        serviceNotesArea.clear();
+        serviceInfoPane.setVisible(false);
+        serviceInfoPane.setManaged(false);
+        updateDetailCounts();
+        if (p == null) {
+            serviceTypeValue.setText("");
+            ensureValidDetailSelection();
+            return;
+        }
+
+        String type = p.getFacturation();
+        String notes = p.getServiceNotes();
+        boolean hasType = type != null && !type.isBlank();
+        boolean hasNotes = notes != null && !notes.isBlank();
+        if (hasType || hasNotes) {
+            serviceTypeValue.setText(hasType ? type : "Non renseigne");
+            serviceNotesArea.setText(hasNotes ? notes : "Aucune description");
+            serviceInfoPane.setVisible(true);
+            serviceInfoPane.setManaged(true);
+        } else {
+            serviceTypeValue.setText("Non renseigne");
+        }
 
         exec.submit(() -> {
             try {
@@ -305,11 +439,15 @@ public final class MainView {
                 Platform.runLater(() -> {
                     tvServices.getItems().setAll(services);
                     tvFactures.getItems().setAll(factures);
+                    updateDetailCounts();
+                    ensureValidDetailSelection();
                 });
             } catch (Exception ex) {
                 Platform.runLater(() -> {
                     tvServices.setPlaceholder(errorLabel("Erreur chargement services"));
                     tvFactures.setPlaceholder(errorLabel("Erreur chargement factures"));
+                    updateDetailCounts();
+                    ensureValidDetailSelection();
                 });
                 ex.printStackTrace();
             }
@@ -332,10 +470,113 @@ public final class MainView {
         return null;
     }
 
+    private void ensureValidDetailSelection() {
+        if (detailStack.getChildren().isEmpty()) return;
+        Toggle selected = detailsToggleGroup.getSelectedToggle();
+        if (selected instanceof ToggleButton btn && btn.isDisable()) {
+            detailsToggleGroup.selectToggle(btnDetailFiche);
+            selected = detailsToggleGroup.getSelectedToggle();
+        }
+        if (selected == null) {
+            detailsToggleGroup.selectToggle(btnDetailFiche);
+            selected = detailsToggleGroup.getSelectedToggle();
+        }
+        if (selected != null) {
+            Object data = selected.getUserData();
+            if (data instanceof Node node) {
+                showDetailSection(node);
+            }
+        }
+    }
+
+    private void updateDetailCounts() {
+        btnDetailServices.setText(labelWithCount("Services", tvServices.getItems().size()));
+        btnDetailFactures.setText(labelWithCount("Factures", tvFactures.getItems().size()));
+        updateServiceSummary();
+    }
+
+    private void updateServiceSummary() {
+        ObservableList<ServiceRow> rows = tvServices.getItems();
+        serviceStatusBar.getChildren().clear();
+        boolean hasServices = rows != null && !rows.isEmpty();
+        serviceStatusBar.setVisible(hasServices);
+        serviceStatusBar.setManaged(hasServices);
+        if (!hasServices) return;
+
+        Map<ServiceStatus, Long> counts = new EnumMap<>(ServiceStatus.class);
+        for (ServiceStatus status : ServiceStatus.values()) {
+            counts.put(status, 0L);
+        }
+        for (ServiceRow row : rows) {
+            ServiceStatus status = row.status() == null ? ServiceStatus.EN_ATTENTE : row.status();
+            counts.merge(status, 1L, Long::sum);
+        }
+        for (ServiceStatus status : ServiceStatus.values()) {
+            long count = counts.getOrDefault(status, 0L);
+            Label chip = new Label(status.label() + " : " + count);
+            chip.getStyleClass().setAll("status-pill", "status-pill--" + status.cssClassSuffix(), "status-pill--summary");
+            serviceStatusBar.getChildren().add(chip);
+        }
+    }
+
+    private static String labelWithCount(String base, int count) {
+        return count > 0 ? base + " (" + count + ")" : base;
+    }
+
+    private ToggleButton createDetailButton(String text) {
+        ToggleButton btn = new ToggleButton(text);
+        btn.setFocusTraversable(false);
+        btn.getStyleClass().add("details-toggle");
+        btn.setToggleGroup(detailsToggleGroup);
+        return btn;
+    }
+
+    private void showDetailSection(Node section) {
+        for (Node child : detailStack.getChildren()) {
+            boolean visible = child == section;
+            child.setVisible(visible);
+            child.setManaged(visible);
+        }
+    }
+
+    private Node createDetailsCard(Node content) {
+        VBox wrapper = new VBox(content);
+        wrapper.getStyleClass().add("details-card");
+        wrapper.setFillWidth(true);
+        if (content instanceof Region region) {
+            region.setMaxWidth(Double.MAX_VALUE);
+            VBox.setVgrow(content, content == fichePane ? Priority.NEVER : Priority.ALWAYS);
+        }
+        return wrapper;
+    }
+
+    private void onChangeServiceStatus(ServiceRow row, ServiceStatus status) {
+        if (row == null || status == null) return;
+        if (row.status() == status) return;
+        Integer id = row.id();
+        if (id == null) return;
+
+        exec.submit(() -> {
+            try {
+                dao.updateServiceStatus(id, status);
+                Platform.runLater(() -> {
+                    ObservableList<ServiceRow> rows = tvServices.getItems();
+                    int idx = rows.indexOf(row);
+                    if (idx >= 0) {
+                        rows.set(idx, row.withStatus(status));
+                        updateDetailCounts();
+                    }
+                });
+            } catch (Exception ex) {
+                Platform.runLater(() -> showError(new RuntimeException("Statut service non mis a jour : " + ex.getMessage())));
+            }
+        });
+    }
+
     // ============================ ACTIONS ============================
 
     private void onAdd() {
-        PrestataireFormDialog dlg = new PrestataireFormDialog(null);
+        PrestataireFormDialog dlg = new PrestataireFormDialog(dao, null, this::refreshCurrentServices);
         ThemeManager.apply(dlg);
         dlg.showAndWait().ifPresent(p -> exec.submit(() -> {
             try { int id = dao.insertPrestataire(p); p.idProperty().set(id);
@@ -346,7 +587,7 @@ public final class MainView {
 
     private void onEdit() {
         Prestataire sel = table.getSelectionModel().getSelectedItem(); if (sel == null) return;
-        PrestataireFormDialog dlg = new PrestataireFormDialog(clonePrestataire(sel));
+        PrestataireFormDialog dlg = new PrestataireFormDialog(dao, clonePrestataire(sel), this::refreshCurrentServices);
         ThemeManager.apply(dlg);
         dlg.showAndWait().ifPresent(p -> exec.submit(() -> {
             try { p.idProperty().set(sel.getId()); dao.updatePrestataire(p);
@@ -357,7 +598,7 @@ public final class MainView {
 
     private void onDelete() {
         Prestataire sel = table.getSelectionModel().getSelectedItem(); if (sel == null) return;
-        if (!confirm("Supprimer " + sel.getNom() + " et ses données ?")) return;
+        if (!confirm("Supprimer " + sel.getNom() + " et ses donnees ?")) return;
         exec.submit(() -> {
             try { dao.deletePrestataire(sel.getId());
                 Platform.runLater(() -> { items.remove(sel); clearDetails(); });
@@ -379,7 +620,7 @@ public final class MainView {
     private void onExportPdf() {
         Prestataire p = table.getSelectionModel().getSelectedItem();
         if (p == null) {
-            Alert a = new Alert(Alert.AlertType.INFORMATION, "Sélectionnez un prestataire.");
+            Alert a = new Alert(Alert.AlertType.INFORMATION, "Selectionnez un prestataire.");
             ThemeManager.apply(a);
             a.showAndWait();
             return;
@@ -393,7 +634,7 @@ public final class MainView {
             try {
                 PDF.exportFichePrestataire(p, f.toPath());
                 Platform.runLater(() -> {
-                    Alert ok = new Alert(Alert.AlertType.INFORMATION, "Exporté : " + f.getAbsolutePath());
+                    Alert ok = new Alert(Alert.AlertType.INFORMATION, "Exporte : " + f.getAbsolutePath());
                     ThemeManager.apply(ok);
                     ok.showAndWait();
                 });
