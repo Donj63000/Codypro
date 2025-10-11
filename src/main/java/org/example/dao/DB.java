@@ -1,6 +1,7 @@
 package org.example.dao;
 
 import org.example.model.Facture;
+import org.example.model.NotificationSettings;
 import org.example.model.Prestataire;
 import org.example.model.Rappel;
 import org.example.model.ServiceRow;
@@ -164,32 +165,27 @@ public class DB implements ConnectionProvider {
                         envoye INTEGER NOT NULL DEFAULT 0
                     );""");
             st.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS notification_settings(
+                        id INTEGER PRIMARY KEY CHECK(id=1),
+                        lead_days INTEGER NOT NULL DEFAULT 3,
+                        reminder_hour INTEGER NOT NULL DEFAULT 9,
+                        reminder_minute INTEGER NOT NULL DEFAULT 0,
+                        repeat_every_hours INTEGER NOT NULL DEFAULT 4,
+                        highlight_overdue INTEGER NOT NULL DEFAULT 1,
+                        desktop_popup INTEGER NOT NULL DEFAULT 1,
+                        snooze_minutes INTEGER NOT NULL DEFAULT 30,
+                        subject_template TEXT NOT NULL DEFAULT 'Facture {{prestataire}} : échéance le {{echeance}}',
+                        body_template TEXT NOT NULL DEFAULT 'La facture {{facture}} d''un montant de {{montant}} pour {{prestataire}} arrive {{delai}}.\nStatut : {{statut}}.'
+                    );""");
+            st.executeUpdate("""
+                    INSERT INTO notification_settings (id)
+                    SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM notification_settings WHERE id=1);
+                    """);
+            st.executeUpdate("""
                     CREATE INDEX IF NOT EXISTS idx_rappels_date ON rappels(envoye,date_envoi_ts);""");
             st.executeUpdate("""
                     CREATE INDEX IF NOT EXISTS idx_factures_prestataire ON factures(prestataire_id,paye);""");
-            st.executeUpdate("""
-                    CREATE TABLE IF NOT EXISTS mail_prefs(
-                        id INTEGER PRIMARY KEY CHECK(id=1),
-                        host TEXT NOT NULL,
-                        port INTEGER NOT NULL,
-                        ssl INTEGER NOT NULL DEFAULT 1,
-                        user TEXT,
-                        pwd TEXT,
-                        provider TEXT,
-                        oauth_client TEXT,
-                        oauth_refresh TEXT,
-                        oauth_expiry INTEGER,
-                        from_addr TEXT NOT NULL,
-                        copy_to_self TEXT NOT NULL DEFAULT '',
-                        delay_hours INTEGER NOT NULL DEFAULT 48,
-                        style TEXT NOT NULL DEFAULT 'fr',
-                        subj_tpl_presta TEXT NOT NULL,
-                        body_tpl_presta TEXT NOT NULL,
-                        subj_tpl_self TEXT NOT NULL,
-                        body_tpl_self TEXT NOT NULL
-                    );""");
         }
-        upgradeCopyToSelf(c);
         addMissingColumns(c);
     }
 
@@ -787,6 +783,70 @@ public class DB implements ConnectionProvider {
         }
     }
 
+    public NotificationSettings loadNotificationSettings() {
+        String sql = """
+                SELECT lead_days, reminder_hour, reminder_minute, repeat_every_hours, highlight_overdue,
+                       desktop_popup, snooze_minutes, subject_template, body_template
+                  FROM notification_settings
+                 WHERE id=1
+                """;
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                return new NotificationSettings(
+                        rs.getInt("lead_days"),
+                        rs.getInt("reminder_hour"),
+                        rs.getInt("reminder_minute"),
+                        rs.getInt("repeat_every_hours"),
+                        rs.getInt("highlight_overdue") != 0,
+                        rs.getInt("desktop_popup") != 0,
+                        rs.getInt("snooze_minutes"),
+                        rs.getString("subject_template"),
+                        rs.getString("body_template")
+                ).normalized();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Chargement des réglages de notifications impossible : " + e.getMessage(), e);
+        }
+        return NotificationSettings.defaults();
+    }
+
+    public void saveNotificationSettings(NotificationSettings settings) {
+        NotificationSettings normalized = settings == null ? NotificationSettings.defaults() : settings.normalized();
+        String sql = """
+                INSERT INTO notification_settings
+                    (id, lead_days, reminder_hour, reminder_minute, repeat_every_hours,
+                     highlight_overdue, desktop_popup, snooze_minutes, subject_template, body_template)
+                VALUES(1,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET
+                    lead_days=excluded.lead_days,
+                    reminder_hour=excluded.reminder_hour,
+                    reminder_minute=excluded.reminder_minute,
+                    repeat_every_hours=excluded.repeat_every_hours,
+                    highlight_overdue=excluded.highlight_overdue,
+                    desktop_popup=excluded.desktop_popup,
+                    snooze_minutes=excluded.snooze_minutes,
+                    subject_template=excluded.subject_template,
+                    body_template=excluded.body_template
+                """;
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, normalized.leadDays());
+            ps.setInt(2, normalized.reminderHour());
+            ps.setInt(3, normalized.reminderMinute());
+            ps.setInt(4, normalized.repeatEveryHours());
+            ps.setInt(5, normalized.highlightOverdue() ? 1 : 0);
+            ps.setInt(6, normalized.desktopPopup() ? 1 : 0);
+            ps.setInt(7, normalized.snoozeMinutes());
+            ps.setString(8, normalized.subjectTemplate());
+            ps.setString(9, normalized.bodyTemplate());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Sauvegarde des réglages de notifications impossible : " + e.getMessage(), e);
+        }
+    }
+
     public void marquerPreavisEnvoye(int id) {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement("UPDATE factures SET preavis_envoye=1 WHERE id=?")) {
@@ -942,63 +1002,9 @@ public class DB implements ConnectionProvider {
         ensureTs(c, "factures", "date_paiement_ts", "date_paiement");
         ensureTs(c, "rappels", "date_envoi_ts", "date_envoi");
         ensureMoney(c);
+        ensureNotificationSettingsSchema(c);
         try (Statement st = c.createStatement()) {
             st.executeUpdate("UPDATE services SET status='EN_ATTENTE' WHERE status IS NULL OR TRIM(status)=''");
-        }
-    }
-
-    private static void upgradeCopyToSelf(Connection c) throws SQLException {
-        try (Statement st = c.createStatement()) {
-            st.executeUpdate("""
-                CREATE TABLE IF NOT EXISTS mail_prefs(
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    host TEXT, port INTEGER, ssl INTEGER,
-                    user TEXT, pwd TEXT,
-                    provider TEXT,
-                    oauth_client TEXT, oauth_refresh TEXT, oauth_expiry INTEGER,
-                    from_addr TEXT,
-                    copy_to_self TEXT,
-                    delay_hours INTEGER,
-                    style TEXT,
-                    subj_tpl_presta TEXT, body_tpl_presta TEXT,
-                    subj_tpl_self TEXT,   body_tpl_self TEXT
-                )
-            """);
-        }
-
-        try (Statement st = c.createStatement()) {
-            st.executeUpdate("UPDATE mail_prefs SET copy_to_self='' WHERE copy_to_self IS NULL");
-        }
-
-        try (Statement st = c.createStatement()) {
-            st.executeUpdate("""
-                CREATE TABLE IF NOT EXISTS mail_prefs_new(
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    host TEXT, port INTEGER, ssl INTEGER,
-                    user TEXT, pwd TEXT,
-                    provider TEXT,
-                    oauth_client TEXT, oauth_refresh TEXT, oauth_expiry INTEGER,
-                    from_addr TEXT,
-                    copy_to_self TEXT NOT NULL DEFAULT '',
-                    delay_hours INTEGER,
-                    style TEXT,
-                    subj_tpl_presta TEXT, body_tpl_presta TEXT,
-                    subj_tpl_self TEXT,   body_tpl_self TEXT
-                )
-            """);
-            st.executeUpdate("""
-                INSERT OR REPLACE INTO mail_prefs_new
-                SELECT id, host, port, ssl, user, pwd, provider,
-                       oauth_client, oauth_refresh, oauth_expiry,
-                       from_addr,
-                       COALESCE(copy_to_self, ''),
-                       delay_hours, style,
-                       subj_tpl_presta, body_tpl_presta,
-                       subj_tpl_self,   body_tpl_self
-                FROM mail_prefs
-            """);
-            st.executeUpdate("DROP TABLE mail_prefs");
-            st.executeUpdate("ALTER TABLE mail_prefs_new RENAME TO mail_prefs");
         }
     }
 
@@ -1038,6 +1044,38 @@ public class DB implements ConnectionProvider {
             st.executeUpdate("UPDATE factures SET montant_ttc=montant_ht+montant_tva WHERE montant_ttc=0");
             st.executeUpdate("UPDATE factures SET devise='EUR' WHERE devise IS NULL");
         }
+    }
+
+    private static void ensureNotificationSettingsSchema(Connection c) throws SQLException {
+        try (Statement st = c.createStatement()) {
+            st.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS notification_settings(
+                        id INTEGER PRIMARY KEY CHECK(id=1),
+                        lead_days INTEGER NOT NULL DEFAULT 3,
+                        reminder_hour INTEGER NOT NULL DEFAULT 9,
+                        reminder_minute INTEGER NOT NULL DEFAULT 0,
+                        repeat_every_hours INTEGER NOT NULL DEFAULT 4,
+                        highlight_overdue INTEGER NOT NULL DEFAULT 1,
+                        desktop_popup INTEGER NOT NULL DEFAULT 1,
+                        snooze_minutes INTEGER NOT NULL DEFAULT 30,
+                        subject_template TEXT NOT NULL DEFAULT 'Facture {{prestataire}} : échéance le {{echeance}}',
+                        body_template TEXT NOT NULL DEFAULT 'La facture {{facture}} d''un montant de {{montant}} pour {{prestataire}} arrive {{delai}}.\nStatut : {{statut}}.'
+                    );
+                    """);
+            st.executeUpdate("""
+                    INSERT INTO notification_settings (id)
+                    SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM notification_settings WHERE id=1);
+                    """);
+        }
+        ensureColumn(c, "notification_settings", "lead_days", "INTEGER NOT NULL DEFAULT 3");
+        ensureColumn(c, "notification_settings", "reminder_hour", "INTEGER NOT NULL DEFAULT 9");
+        ensureColumn(c, "notification_settings", "reminder_minute", "INTEGER NOT NULL DEFAULT 0");
+        ensureColumn(c, "notification_settings", "repeat_every_hours", "INTEGER NOT NULL DEFAULT 4");
+        ensureColumn(c, "notification_settings", "highlight_overdue", "INTEGER NOT NULL DEFAULT 1");
+        ensureColumn(c, "notification_settings", "desktop_popup", "INTEGER NOT NULL DEFAULT 1");
+        ensureColumn(c, "notification_settings", "snooze_minutes", "INTEGER NOT NULL DEFAULT 30");
+        ensureColumn(c, "notification_settings", "subject_template", "TEXT NOT NULL DEFAULT 'Facture {{prestataire}} : échéance le {{echeance}}'");
+        ensureColumn(c, "notification_settings", "body_template", "TEXT NOT NULL DEFAULT 'La facture {{facture}} d''un montant de {{montant}} pour {{prestataire}} arrive {{delai}}.\nStatut : {{statut}}.'");
     }
 
     public void ensureIndexes(Connection c) throws SQLException {

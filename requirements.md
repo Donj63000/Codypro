@@ -3,20 +3,20 @@
 Ce document définit les exigences fonctionnelles et non‑fonctionnelles de l’application, afin d’aligner développement, tests et validation utilisateur.
 
 ## 1. Vision et périmètre
-- But: gérer les prestataires de services, leurs contrats, factures et rappels, avec envoi d’e‑mails et exports PDF.
+- But: gérer les prestataires de services, leurs contrats, factures et rappels, avec alertes d’échéance (tableau de bord aujourd’hui, notifications push en préparation) et exports PDF.
 - Cible: usage bureau mono‑utilisateur, données locales chiffrées, authentification locale.
 
 ## 2. Rôles et terminologie
 - Utilisateur: personne utilisant l’app (auth locale).
 - Prestataire: entité gérée (nom, société, contact, note, facturation, date contrat).
 - Facture: montant, TVA, TTC, échéance, état payé/impayé.
-- Rappel/Préavis: e‑mail automatique vers prestataire et/ou utilisateur selon règles.
-- MailPrefs: préférences d’envoi (SMTP classique ou OAuth Gmail/Outlook).
+- Rappel/Préavis: notification planifiée associée à une facture (affichée dans l’UI, future distribution push).
 
 ## 3. Exigences fonctionnelles (EF)
 - EF‑01 Authentification locale
   - Inscription si `auth.db` vide, puis connexion utilisateur.
-  - Critères: après inscription, une session est ouverte automatiquement; après connexion valide, session créée.
+  - Gestion des comptes depuis l'interface (« Configuration du compte ») avec création, renommage, suppression (hors session active) et changement de mot de passe.
+  - Critères: après inscription, une session est ouverte automatiquement; après connexion valide, session créée; les opérations CRUD sur les comptes sont reflétées immédiatement et empêchent la suppression du dernier compte ou du compte actif.
 - EF‑02 Chiffrement des données utilisateur
   - La base `~/.prestataires/<username>.db` doit être chiffrée (SQLCipher). Si base claire détectée, migration automatique vers chiffrée; si fichier corrompu, isolement et recréation.
   - Critères: ouverture via `openOrRepair` réussit pour 3 cas (chiffrée valide, claire à migrer, corrompue à isoler).
@@ -29,33 +29,19 @@ Ce document définit les exigences fonctionnelles et non‑fonctionnelles de l�
 - EF‑05 Factures
   - Créer, lister (filtre payé/impayé), marquer payée/non payée; champs montants (HT, TVA, TTC, devise) gérés et normalisés.
   - Critères: calculs par défaut cohérents (TVA/ttc), dates stockées en `yyyy-MM-dd` + timestamp.
-- EF‑06 Rappels planifiés (scheduler)
-  - Tâche périodique (60 min) qui:
-    - Envoie préavis internes à l’utilisateur 48/24/12 h avant l’échéance (une seule fois par tranche).
-    - Envoie e‑mails de rappel aux prestataires au‑delà de `delayHours` après l’échéance et copie à soi si configuré.
-  - Critères: déduplication par clé `factureId:slot`; marquage `preavis_envoye`.
-- EF‑07 E‑mails sortants
-  - Envoi via SMTP classique (SSL ou STARTTLS) ou OAuth XOAUTH2 (Gmail/Outlook).
-  - Critères: From renseigné; en cas d’OAuth, jeton d’accès valide; en cas d’échec OAuth, invalidation du refresh token et feedback UI.
-- EF‑08 Templates e‑mail
-  - Deux jeux min. (FR/EN) pour prestataire et copie à soi, avec variables `%NOM%`, `%EMAIL%`, `%MONTANT%`, `%ECHEANCE%`, `%ID%`.
-  - Critères: rendu correct, placeholders remplacés; fallback sur défauts si champs vides.
-- EF‑09 Assistant de configuration mail
-  - Dialog « Paramètres e‑mail »: presets (local, custom, gmail, outlook), test d’envoi, flux OAuth Gmail (PKCE) et aide dédiée.
-  - Critères: test d’envoi réussi avec conf valide; OAuth stocke refresh token chiffré et déduit l’adresse utilisateur si manquante.
-- EF‑10 Relais SMTP local
-  - Serveur SMTP local (par défaut 2525) acceptant un message et le relayant via `MailPrefs`, ou l’archivant si `host=localhost`.
-  - Critères: messages `.eml` déposés en `~/.prestataires/outbox` si boucle potentielle.
-- EF‑11 Export PDF
+- EF‑06 Alertes d’échéance
+  - Tableau de bord mettant en avant les factures à échéance sous 72 h et celles en retard, avec résumé et liste détaillée.
+  - Critères: l’alerte s’affiche/masque dynamiquement en fonction des données et indique un résumé cohérent (retards vs à surveiller).
+- EF‑07 Export PDF
   - Export « fiche prestataire » et « historique global » (OpenPDF).
   - Critères: fichiers générés avec contenu minimal lisible et encodage correct.
-- EF‑12 Thèmes et UI
+- EF‑08 Thèmes et UI
   - Thèmes clair/sombre via CSS; bascule safe UI (`-Dapp.safeUi=true`) pour désactiver les styles si besoin.
   - Critères: l’UI démarre avec styles par défaut et reste fonctionnelle en mode safe.
-- EF‑13 Internationalisation minimale
-  - Textes en français par défaut; templates e‑mail FR/EN sélectionnables.
-  - Critères: sélection de style mail persistée.
-- EF‑14 Journalisation
+- EF‑09 Internationalisation minimale
+  - Textes en français par défaut; contenus clé exposés dans les deux thèmes.
+  - Critères: terminologie homogène entre les vues principales.
+- EF‑10 Journalisation
   - Logs via SLF4J Simple; niveau configurable par propriété système.
   - Critères: aucune donnée sensible (mots de passe, tokens) dans les logs.
 
@@ -64,23 +50,23 @@ Ce document définit les exigences fonctionnelles et non‑fonctionnelles de l�
 - ENF‑02 Robustesse DB: WAL activé, FK ON, busy_timeout, détection auto des colonnes manquantes et migration additive.
 - ENF‑03 Performance: ouverture DB et première requête < 1s sur poste standard; scheduler non bloquant (thread daemon).
 - ENF‑04 Portabilité: Java 17+, Maven; Windows/macOS/Linux (JavaFX profils de plateforme).
-- ENF‑05 Confidentialité: préférences mail sensibles chiffrées au repos (pwd/oauth).
+- ENF‑05 Confidentialité: secrets applicatifs (mots de passe, clés futures pour notifications) doivent rester chiffrés ou dérivés.
 - ENF‑06 Expérience: erreurs présentées dans l’UI avec messages compréhensibles et actions de remédiation (ex: reconfigurer OAuth).
 
 ## 5. Contraintes & dépendances
 - Java 17+, Maven.
-- Dépendances principales: JavaFX, sqlite-jdbc (SQLCipher), HikariCP, Argon2, Jakarta Mail, OpenPDF, Jackson, SLF4J, SubEthaSMTP.
+- Dépendances principales: JavaFX, sqlite-jdbc (SQLCipher), HikariCP, Argon2, OpenPDF, Jackson, Ikonli, SLF4J.
 
 ## 6. Données & schéma (résumé)
-- Tables: `prestataires`, `services`, `factures`, `rappels`, `mail_prefs` (+ `users` dans `auth.db`).
+- Tables: `prestataires`, `services`, `factures`, `rappels` (+ `users` dans `auth.db`).
 - Horodatages en colonnes `*_ts` (epoch seconds UTC) et dates lisibles `yyyy-MM-dd`.
 - Clés étrangères avec cascade conformément au schéma.
 
 ## 7. Critères d’acceptation (exemples ciblés)
 - CA‑01 À la première exécution, si aucun utilisateur, l’écran d’inscription s’affiche et la création aboutit à une session ouverte.
 - CA‑02 Si `~/.prestataires/<username>.db` est une DB claire, elle est migrée automatiquement en chiffrée; sinon si corrompue, elle est mise de côté et une DB chiffrée neuve est créée.
-- CA‑03 Un rappel 24h avant l’échéance est envoyé une seule fois et visible dans les logs; `preavis_envoye` vaut 1 après envoi.
-- CA‑04 En OAuth Gmail, un test d’envoi aboutit sans saisir de mot de passe SMTP; en cas d’expiration, l’app force la reconnexion.
+- CA‑03 Une facture dont l’échéance est dans moins de 72 h apparaît dans la section alertes avec la bonne couleur (warning/danger) et le résumé se met à jour.
+- CA‑04 Si toutes les factures sont réglées ou au-delà de 72 h, la section alertes se masque automatiquement.
 - CA‑05 L’export « Fiche prestataire » crée un PDF non vide avec les champs principaux.
 
 ## 8. Hors périmètre (v1)
@@ -94,9 +80,8 @@ Ce document définit les exigences fonctionnelles et non‑fonctionnelles de l�
 - Dépendance SQLCipher: `mvn -q dependency:tree -Dincludes=io.github.willena:sqlite-jdbc`
 
 ## 10. Qualité & tests (lignes directrices)
-- Tests unitaires ciblant: `CryptoUtils` (chiffrement), `TokenCrypto` (rond‑trip), migrations `DB` (colonnes manquantes), rendu templates `Mailer`.
-- Tests manuels: parcours OAuth (Gmail/Outlook), envoi test, relais local, exports PDF, scénarios NOTADB.
+- Tests unitaires ciblant: `CryptoUtils` (chiffrement), `TokenCrypto` (rond‑trip), migrations `DB` (colonnes manquantes), calculs de métriques/alertes factures.
+- Tests manuels: vérification des alertes (factures proches/retard), exports PDF, scénarios NOTADB.
 
 ---
 Document vivant: ajuster selon l’évolution des besoins et du code.
-

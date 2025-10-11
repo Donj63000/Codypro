@@ -316,3 +316,223 @@
     -fx-border-color: rgba(148, 163, 184, 0.35);
     -fx-border-radius: 999;
 }
+
+.alerts-panel {
+    -fx-padding: 12 16;
+    -fx-background-radius: 12;
+    -fx-border-radius: 12;
+    -fx-border-width: 1;
+    -fx-spacing: 10;
+}
+
+.alerts-panel--warning {
+    -fx-background-color: rgba(253, 186, 116, 0.18);
+    -fx-border-color: #fbbf24;
+}
+
+.alerts-panel--danger {
+    -fx-background-color: rgba(248, 113, 113, 0.2);
+    -fx-border-color: #f87171;
+}
+
+.alerts-panel--info {
+    -fx-background-color: rgba(99, 102, 241, 0.22);
+    -fx-border-color: #6366f1;
+}
+
+.alerts-header {
+    -fx-spacing: 8;
+    -fx-alignment: center-left;
+}
+
+.alerts-badge {
+    -fx-background-radius: 999;
+    -fx-padding: 4 12;
+    -fx-font-weight: bold;
+    -fx-text-fill: #0f172a;
+}
+
+.alerts-badge--warning {
+    -fx-background-color: #fbbf24;
+    -fx-text-fill: #0f172a;
+}
+
+.alerts-badge--danger {
+    -fx-background-color: #ef4444;
+    -fx-text-fill: #f8fafc;
+}
+
+.alerts-badge--info {
+    -fx-background-color: #6366f1;
+    -fx-text-fill: #e2e8f0;
+}
+
+.alerts-summary {
+    -fx-font-weight: bold;
+    -fx-text-fill: #f8fafc;
+}
+
+.alerts-list {
+    -fx-spacing: 6;
+}
+
+.alerts-item {
+    -fx-text-fill: #e2e8f0;
+}
+
+.alerts-item-card {
+    -fx-background-color: rgba(15, 23, 42, 0.75);
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+    -fx-padding: 10 14;
+    -fx-spacing: 4;
+}
+
+.alerts-item-title {
+    -fx-font-weight: 600;
+    -fx-text-fill: #f8fafc;
+}
+
+.alerts-item-body {
+    -fx-text-fill: #cbd5f5;
+}
+
+.account-manager-dialog {
+    -fx-background-color: #0f172a;
+    -fx-border-color: rgba(148, 163, 184, 0.35);
+    -fx-border-width: 1;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+}
+
+.dialog-header {
+    -fx-border-width: 0 0 1 0;
+    -fx-border-color: rgba(148, 163, 184, 0.25);
+    -fx-padding: 0 0 18 0;
+}
+
+.dialog-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f8fafc;
+}
+
+.dialog-subtitle {
+    -fx-text-fill: #94a3b8;
+    -fx-font-size: 13px;
+}
+
+.notification-settings-dialog {
+    -fx-background-color: #0f172a;
+    -fx-border-color: rgba(148, 163, 184, 0.35);
+    -fx-border-width: 1;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+}
+
+.dialog-column {
+    -fx-spacing: 16;
+}
+
+.dialog-flow {
+    -fx-padding: 0 4 8 0;
+}
+
+.dialog-scroll-pane {
+    -fx-background-color: transparent;
+}
+
+.dialog-scroll-pane > .viewport {
+    -fx-background-color: transparent;
+}
+
+.dialog-section {
+    -fx-background-color: rgba(30, 41, 59, 0.9);
+    -fx-border-color: rgba(148, 163, 184, 0.28);
+    -fx-border-width: 1;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+    -fx-padding: 18;
+    -fx-spacing: 12;
+}
+
+.dialog-section-title {
+    -fx-text-fill: #e2e8f0;
+    -fx-font-size: 14px;
+    -fx-font-weight: 700;
+}
+
+.dialog-section-subtitle {
+    -fx-text-fill: #94a3b8;
+    -fx-font-size: 12px;
+}
+
+.dialog-pill {
+    -fx-background-color: rgba(99, 102, 241, 0.32);
+    -fx-text-fill: #e0e7ff;
+    -fx-font-weight: 700;
+    -fx-font-size: 11px;
+    -fx-letter-spacing: 0.6px;
+    -fx-padding: 4 12;
+    -fx-background-radius: 999;
+    -fx-border-radius: 999;
+    -fx-text-transform: uppercase;
+}
+
+.placeholder-tags {
+    -fx-padding: 4 0 0 0;
+}
+
+.placeholder-pill {
+    -fx-background-color: rgba(59, 130, 246, 0.32);
+    -fx-text-fill: #dbeafe;
+    -fx-font-size: 12px;
+    -fx-font-weight: 600;
+    -fx-padding: 4 10;
+    -fx-background-radius: 999;
+    -fx-border-radius: 999;
+}
+
+.notification-preview-card {
+    -fx-background-color: linear-gradient(to bottom, rgba(99, 102, 241, 0.32), rgba(30, 41, 59, 0.45));
+    -fx-border-color: rgba(99, 102, 241, 0.32);
+    -fx-border-width: 1;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+    -fx-padding: 14;
+    -fx-spacing: 8;
+}
+
+.notification-preview-title {
+    -fx-font-weight: 600;
+    -fx-text-fill: #e0e7ff;
+    -fx-font-size: 14px;
+}
+
+.notification-preview-body {
+    -fx-text-fill: #cbd5f5;
+    -fx-font-size: 13px;
+}
+
+.form-label {
+    -fx-text-fill: #cbd5f5;
+    -fx-font-size: 12px;
+    -fx-font-weight: 600;
+    -fx-text-transform: uppercase;
+    -fx-letter-spacing: 0.4px;
+}
+
+.form-grid {
+    -fx-hgap: 12;
+    -fx-vgap: 12;
+}
+
+.form-hint {
+    -fx-text-fill: #94a3b8;
+    -fx-font-size: 12px;
+}
+.dialog-footer {
+    -fx-border-width: 1 0 0 0;
+    -fx-border-color: rgba(148, 163, 184, 0.25);
+    -fx-padding: 16 0 0 0;
+}

@@ -56,53 +56,23 @@ public final class DbBootstrap {
                 )
             """);
             st.execute("""
-                CREATE TABLE IF NOT EXISTS mail_prefs(
-                  id INTEGER PRIMARY KEY CHECK (id=1),
-                  host TEXT, port INTEGER, ssl INTEGER,
-                  user TEXT, pwd TEXT,
-                  provider TEXT,
-                  oauth_client TEXT, oauth_refresh TEXT, oauth_expiry INTEGER,
-                  from_addr TEXT,
-                  copy_to_self TEXT,
-                  delay_hours INTEGER,
-                  style TEXT,
-                  subj_tpl_presta TEXT, body_tpl_presta TEXT,
-                  subj_tpl_self TEXT,  body_tpl_self TEXT
+                CREATE TABLE IF NOT EXISTS notification_settings(
+                  id INTEGER PRIMARY KEY CHECK(id=1),
+                  lead_days INTEGER NOT NULL DEFAULT 3,
+                  reminder_hour INTEGER NOT NULL DEFAULT 9,
+                  reminder_minute INTEGER NOT NULL DEFAULT 0,
+                  repeat_every_hours INTEGER NOT NULL DEFAULT 4,
+                  highlight_overdue INTEGER NOT NULL DEFAULT 1,
+                  desktop_popup INTEGER NOT NULL DEFAULT 1,
+                  snooze_minutes INTEGER NOT NULL DEFAULT 30,
+                  subject_template TEXT NOT NULL DEFAULT 'Facture {{prestataire}} : échéance le {{echeance}}',
+                  body_template TEXT NOT NULL DEFAULT 'La facture {{facture}} d''un montant de {{montant}} pour {{prestataire}} arrive {{delai}}.\nStatut : {{statut}}.'
                 )
             """);
-
-            // Migration SQLite-safe pour NOT NULL/DEFAULT '' de copy_to_self
-            try {
-                st.executeUpdate("UPDATE mail_prefs SET copy_to_self='' WHERE copy_to_self IS NULL");
-                st.execute("""
-                    CREATE TABLE IF NOT EXISTS mail_prefs_new(
-                      id INTEGER PRIMARY KEY CHECK (id=1),
-                      host TEXT, port INTEGER, ssl INTEGER,
-                      user TEXT, pwd TEXT,
-                      provider TEXT,
-                      oauth_client TEXT, oauth_refresh TEXT, oauth_expiry INTEGER,
-                      from_addr TEXT,
-                      copy_to_self TEXT NOT NULL DEFAULT '',
-                      delay_hours INTEGER,
-                      style TEXT,
-                      subj_tpl_presta TEXT, body_tpl_presta TEXT,
-                      subj_tpl_self TEXT,  body_tpl_self TEXT
-                    )
-                """);
-                st.execute("""
-                    INSERT OR REPLACE INTO mail_prefs_new
-                    SELECT id, host, port, ssl, user, pwd, provider,
-                           oauth_client, oauth_refresh, oauth_expiry,
-                           from_addr, COALESCE(copy_to_self,''),
-                           delay_hours, style,
-                           subj_tpl_presta, body_tpl_presta,
-                           subj_tpl_self, body_tpl_self
-                    FROM mail_prefs
-                """);
-                st.execute("DROP TABLE mail_prefs");
-                st.execute("ALTER TABLE mail_prefs_new RENAME TO mail_prefs");
-            } catch (SQLException ignore) {}
-
+            st.execute("""
+                INSERT INTO notification_settings (id)
+                SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM notification_settings WHERE id=1)
+            """);
             // Index
             dao.ensureIndexes(c);
             log.debug("[DbBootstrap] Schema ensured; indexes created");
