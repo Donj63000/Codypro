@@ -21,6 +21,7 @@ import org.example.notifications.DialogDesktopNotifier;
 import org.example.notifications.NotificationService;
 import org.example.notifications.SystemTrayManager;
 import org.example.notifications.SystemTrayNotifier;
+import org.example.gui.Dialogs;
 import org.example.gui.LoginDialog;
 import org.example.gui.MainView;
 import org.example.gui.RegisterDialog;
@@ -53,13 +54,13 @@ public final class MainApp extends Application {
     @Override
     public void start(Stage stage) {
         Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
-            e.printStackTrace();
+            log.error("Uncaught exception in thread {}", t.getName(), e);
         });
         System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
         try {
             assertSqliteEncryption();
         } catch (Exception ex) {
-            ex.printStackTrace();
+            log.error("Unable to verify SQLCipher configuration", ex);
             showError("Erreur au demarrage: " + ex.getMessage());
             Platform.exit();
             return;
@@ -68,7 +69,7 @@ public final class MainApp extends Application {
             authDb = new AuthDB();
             authService = new AuthService(authDb);
         } catch (Exception ex) {
-            ex.printStackTrace();
+            log.error("Unable to initialise authentication subsystem", ex);
             showError("Erreur d'initialisation des comptes: " + ex.getMessage());
             Platform.exit();
             return;
@@ -125,7 +126,7 @@ public final class MainApp extends Application {
             stage.show();
 
         } catch (Exception ex) {
-            ex.printStackTrace();
+            log.error("Unexpected error during startup", ex);
             showError("Erreur au demarrage: " + ex.getMessage());
             Platform.exit();
         }
@@ -267,9 +268,7 @@ public final class MainApp extends Application {
     }
 
     private static void showError(String msg) {
-        Alert a = new Alert(Alert.AlertType.ERROR, msg, ButtonType.OK);
-        ThemeManager.apply(a);
-        a.showAndWait();
+        Dialogs.error(null, msg);
     }
 
     private Optional<AuthService.Session> authenticateUntilDbOpen(AuthService sec) throws Exception {

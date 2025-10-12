@@ -36,6 +36,8 @@ import org.example.gui.FactureFormDialog;
 import org.example.security.AuthService;
 import org.example.gui.account.AccountManagerDialog;
 import org.example.util.NotificationTemplateEngine;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
@@ -54,6 +56,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class MainView {
+    private static final Logger log = LoggerFactory.getLogger(MainView.class);
     private final Stage stage;
     private final DB dao;
     private final AuthService authService;
@@ -239,7 +242,7 @@ public final class MainView {
         try {
             return dao.loadNotificationSettings();
         } catch (Exception ex) {
-            ex.printStackTrace();
+            log.error("Unable to load notification settings", ex);
             Platform.runLater(() -> showError(new RuntimeException("Paramètres de notification indisponibles : " + ex.getMessage(), ex)));
             return NotificationSettings.defaults();
         }
@@ -266,6 +269,7 @@ public final class MainView {
                     updateAlerts();
                 });
             } catch (Exception ex) {
+                log.error("Unable to persist notification settings", ex);
                 Platform.runLater(() -> showError(new RuntimeException("Paramètres de notification non enregistrés : " + ex.getMessage(), ex)));
             }
         });
@@ -624,13 +628,13 @@ public final class MainView {
                     updateAlerts();
                 });
             } catch (Exception ex) {
+                log.error("Unable to load prestataires", ex);
                 Platform.runLater(() -> {
                     table.setPlaceholder(errorLabel("Erreur de chargement : " + ex.getMessage()));
                     clearDetails();
                     updateMetrics();
                     updateAlerts();
                 });
-                ex.printStackTrace();
             }
         });
     }
@@ -693,13 +697,13 @@ public final class MainView {
                     ensureValidDetailSelection();
                 });
             } catch (Exception ex) {
+                log.error("Unable to load details for prestataire {}", p.getId(), ex);
                 Platform.runLater(() -> {
                     tvServices.setPlaceholder(errorLabel("Erreur chargement services"));
                     tvFactures.setPlaceholder(errorLabel("Erreur chargement factures"));
                     updateDetailCounts();
                     ensureValidDetailSelection();
                 });
-                ex.printStackTrace();
             }
         });
     }
@@ -1050,7 +1054,7 @@ public final class MainView {
     }
 
     private void renderAlertsError(Exception ex) {
-        ex.printStackTrace();
+        log.error("Unable to render alerts overview", ex);
         alertsList.getChildren().clear();
         alertsPanel.setVisible(false);
         alertsPanel.setManaged(false);
@@ -1106,6 +1110,7 @@ public final class MainView {
                     }
                 });
             } catch (Exception ex) {
+                log.error("Unable to update service status {} -> {} for row {}", id, status, ex);
                 Platform.runLater(() -> showError(new RuntimeException("Statut service non mis a jour : " + ex.getMessage())));
             }
         });
@@ -1119,7 +1124,7 @@ public final class MainView {
         dlg.showAndWait().ifPresent(p -> exec.submit(() -> {
             try { int id = dao.insertPrestataire(p); p.idProperty().set(id);
                 Platform.runLater(() -> { items.add(p); table.getSelectionModel().select(p); });
-            } catch (Exception ex) { Platform.runLater(() -> showError(ex)); }
+            } catch (Exception ex) { log.error("Unable to create prestataire {}", p.getNom(), ex); Platform.runLater(() -> showError(ex)); }
         }));
     }
 
@@ -1130,7 +1135,7 @@ public final class MainView {
         dlg.showAndWait().ifPresent(p -> exec.submit(() -> {
             try { p.idProperty().set(sel.getId()); dao.updatePrestataire(p);
                 Platform.runLater(() -> { int i = items.indexOf(sel); items.set(i, p); table.getSelectionModel().select(p); });
-            } catch (Exception ex) { Platform.runLater(() -> showError(ex)); }
+            } catch (Exception ex) { log.error("Unable to update prestataire {}", sel.getId(), ex); Platform.runLater(() -> showError(ex)); }
         }));
     }
 
@@ -1140,7 +1145,7 @@ public final class MainView {
         exec.submit(() -> {
             try { dao.deletePrestataire(sel.getId());
                 Platform.runLater(() -> { items.remove(sel); clearDetails(); });
-            } catch (Exception ex) { Platform.runLater(() -> showError(ex)); }
+            } catch (Exception ex) { log.error("Unable to delete prestataire {}", sel.getId(), ex); Platform.runLater(() -> showError(ex)); }
         });
     }
 
@@ -1162,7 +1167,9 @@ public final class MainView {
         Alert a = new Alert(Alert.AlertType.CONFIRMATION, msg, ButtonType.YES, ButtonType.NO);
         ThemeManager.apply(a); return a.showAndWait().orElse(ButtonType.NO)==ButtonType.YES;
     }
-    private void showError(Exception ex) { new Alert(Alert.AlertType.ERROR, ex.getMessage()).showAndWait(); }
+    private void showError(Exception ex) {
+        Dialogs.error(stage, ex);
+    }
 
     private void onExportPdf() {
         Prestataire p = table.getSelectionModel().getSelectedItem();

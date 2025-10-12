@@ -16,5 +16,8 @@ target/
 *.tar
 *.tar.gz
 
+# Binaries
+*.exe
+
 # Logs
 *.log

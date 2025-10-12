@@ -73,6 +73,10 @@ public class DB implements ConnectionProvider {
         HikariConfig hc = new HikariConfig();
         hc.setJdbcUrl("jdbc:sqlite:" + path);
         hc.setDataSourceProperties(sc.toProperties());
+        hc.setMaximumPoolSize(2);
+        hc.setMinimumIdle(0);
+        hc.setIdleTimeout(30_000);
+        hc.setConnectionTimeout(5_000);
         this.ds = new HikariDataSource(hc);
         this.delegate = ds::getConnection;
 
@@ -185,6 +189,14 @@ public class DB implements ConnectionProvider {
                     CREATE INDEX IF NOT EXISTS idx_rappels_date ON rappels(envoye,date_envoi_ts);""");
             st.executeUpdate("""
                     CREATE INDEX IF NOT EXISTS idx_factures_prestataire ON factures(prestataire_id,paye);""");
+            st.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_factures_echeance ON factures(echeance_ts);""");
+            st.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_factures_paye_echeance ON factures(paye,echeance_ts);""");
+            st.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_factures_preavis ON factures(preavis_envoye);""");
+            st.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_services_date ON services(date_ts);""");
         }
         addMissingColumns(c);
     }
