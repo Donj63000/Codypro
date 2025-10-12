@@ -22,6 +22,7 @@ import javafx.scene.layout.*;
 import javafx.scene.layout.Region;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+import org.example.AppServices;
 import org.example.dao.DB;
 import org.example.model.Facture;
 import org.example.model.NotificationSettings;
@@ -259,11 +260,15 @@ public final class MainView {
         exec.submit(() -> {
             try {
                 dao.saveNotificationSettings(toPersist);
+                Platform.runLater(() -> {
+                    AppServices.notificationServiceOptional().ifPresent(service -> service.updateSettings(notificationSettings));
+                    AppServices.trayManagerOptional().ifPresent(manager -> manager.updateSnoozeMinutes(notificationSettings.snoozeMinutes()));
+                    updateAlerts();
+                });
             } catch (Exception ex) {
                 Platform.runLater(() -> showError(new RuntimeException("Paramètres de notification non enregistrés : " + ex.getMessage(), ex)));
             }
         });
-        updateAlerts();
     }
 
     private NotificationSettings currentNotificationSettings() {

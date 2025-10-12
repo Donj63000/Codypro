@@ -783,6 +783,36 @@ public class DB implements ConnectionProvider {
         }
     }
 
+    public List<Facture> facturesNonPayeesAvecPreavis() {
+        String sql = "SELECT * FROM factures WHERE paye=0 AND preavis_envoye=1";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            List<Facture> list = new ArrayList<>();
+            while (rs.next()) {
+                list.add(toFacture(rs));
+            }
+            return list;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public Set<Integer> factureIdsNonPayesAvecPreavis() {
+        String sql = "SELECT id FROM factures WHERE paye=0 AND preavis_envoye=1";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            Set<Integer> ids = new HashSet<>();
+            while (rs.next()) {
+                ids.add(rs.getInt("id"));
+            }
+            return ids;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public NotificationSettings loadNotificationSettings() {
         String sql = """
                 SELECT lead_days, reminder_hour, reminder_minute, repeat_every_hours, highlight_overdue,

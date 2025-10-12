@@ -12,6 +12,13 @@ import org.example.dao.DbBootstrap;
 import org.example.dao.UserDB;
 import org.example.dao.SecureDB;
 import org.example.util.AppPaths;
+import org.example.AppServices;
+import org.example.model.NotificationSettings;
+import org.example.notifications.DesktopNotifier;
+import org.example.notifications.DialogDesktopNotifier;
+import org.example.notifications.NotificationService;
+import org.example.notifications.SystemTrayManager;
+import org.example.notifications.SystemTrayNotifier;
 import org.example.gui.LoginDialog;
 import org.example.gui.MainView;
 import org.example.gui.RegisterDialog;
@@ -36,6 +43,9 @@ public final class MainApp extends Application {
     private AuthService authService;
     private AuthService.Session session;
     private Instant loginStarted;
+    private NotificationService notificationService;
+    private SystemTrayNotifier trayNotifier;
+    private SystemTrayManager trayManager;
 
     @Override
     public void start(Stage stage) {
@@ -107,6 +117,7 @@ public final class MainApp extends Application {
             else ThemeManager.apply(sc);
             stage.setScene(sc);
             stage.setTitle("Gestion des Prestataires");
+            initNotifications(stage);
             stage.show();
 
         } catch (Exception ex) {
@@ -114,6 +125,80 @@ public final class MainApp extends Application {
             showError("Erreur au demarrage: " + ex.getMessage());
             Platform.exit();
         }
+    }
+
+    private void initNotifications(Stage stage) {
+        try {
+            NotificationSettings settings = loadNotificationSettingsSafe();
+            DesktopNotifier notifier = initDesktopNotifier(stage, settings);
+            notificationService = new NotificationService(dao, notifier, () -> settings);
+            notificationService.start();
+            AppServices.registerNotificationService(notificationService);
+        } catch (Throwable ex) {
+            log.warn("[MainApp] Notifications désactivées ({}).", ex.getMessage());
+            log.debug("[MainApp] Stacktrace notifications", ex);
+            notificationService = null;
+            trayNotifier = null;
+            trayManager = null;
+            AppServices.clearNotificationService();
+            AppServices.clearTrayManager();
+        }
+    }
+
+    private NotificationSettings loadNotificationSettingsSafe() {
+        try {
+            return dao.loadNotificationSettings();
+        } catch (Exception ex) {
+            log.warn("[MainApp] Impossible de charger les paramètres de notification, utilisation des valeurs par défaut.", ex);
+            return NotificationSettings.defaults();
+        }
+    }
+
+    private DesktopNotifier initDesktopNotifier(Stage stage, NotificationSettings settings) {
+        if (java.awt.GraphicsEnvironment.isHeadless()) {
+            throw new IllegalStateException("environnement sans interface graphique");
+        }
+        try {
+            trayNotifier = new SystemTrayNotifier();
+            trayManager = new SystemTrayManager(stage, trayNotifier, this::handleSnoozeRequest, this::shutdownFromTray);
+            trayManager.install(settings.snoozeMinutes());
+            AppServices.registerTrayManager(trayManager);
+            stage.setOnCloseRequest(evt -> {
+                evt.consume();
+                stage.hide();
+            });
+            return trayNotifier;
+        } catch (Throwable ex) {
+            log.info("[MainApp] System tray indisponible, utilisation du fallback interne : {}", ex.getMessage());
+            trayNotifier = null;
+            trayManager = null;
+            AppServices.clearTrayManager();
+            stage.setOnCloseRequest(null);
+            return new DialogDesktopNotifier();
+        }
+    }
+
+    private void handleSnoozeRequest(java.time.Duration duration) {
+        AppServices.notificationServiceOptional().ifPresent(service -> service.snooze(duration));
+    }
+
+    private void shutdownFromTray() {
+        stopNotifications();
+        Platform.exit();
+    }
+
+    private void stopNotifications() {
+        if (notificationService != null) {
+            notificationService.stop();
+            notificationService = null;
+        }
+        if (trayNotifier != null) {
+            trayNotifier.dispose();
+            trayNotifier = null;
+        }
+        trayManager = null;
+        AppServices.clearTrayManager();
+        AppServices.clearNotificationService();
     }
 
     private Optional<AuthService.Session> promptLoginLoop(AuthService sec) {
@@ -279,6 +364,7 @@ public final class MainApp extends Application {
 
     @Override
     public void stop() {
+        stopNotifications();
         if (dao != null) dao.close();
         if (userDb != null) userDb.close();
         if (view != null) view.shutdownExecutor();
