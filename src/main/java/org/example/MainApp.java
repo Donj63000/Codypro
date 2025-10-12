@@ -2,10 +2,12 @@ package org.example;
 
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.event.EventHandler;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.stage.Stage;
+import javafx.stage.WindowEvent;
 import org.example.dao.AuthDB;
 import org.example.dao.DB;
 import org.example.dao.DbBootstrap;
@@ -46,6 +48,7 @@ public final class MainApp extends Application {
     private NotificationService notificationService;
     private SystemTrayNotifier trayNotifier;
     private SystemTrayManager trayManager;
+    private EventHandler<WindowEvent> defaultCloseHandler;
 
     @Override
     public void start(Stage stage) {
@@ -117,6 +120,7 @@ public final class MainApp extends Application {
             else ThemeManager.apply(sc);
             stage.setScene(sc);
             stage.setTitle("Gestion des Prestataires");
+            defaultCloseHandler = stage.getOnCloseRequest();
             initNotifications(stage);
             stage.show();
 
@@ -155,25 +159,22 @@ public final class MainApp extends Application {
     }
 
     private DesktopNotifier initDesktopNotifier(Stage stage, NotificationSettings settings) {
-        if (java.awt.GraphicsEnvironment.isHeadless()) {
-            throw new IllegalStateException("environnement sans interface graphique");
-        }
         try {
+            if (java.awt.GraphicsEnvironment.isHeadless()) {
+                throw new IllegalStateException("environnement sans interface graphique");
+            }
             trayNotifier = new SystemTrayNotifier();
             trayManager = new SystemTrayManager(stage, trayNotifier, this::handleSnoozeRequest, this::shutdownFromTray);
             trayManager.install(settings.snoozeMinutes());
             AppServices.registerTrayManager(trayManager);
-            stage.setOnCloseRequest(evt -> {
-                evt.consume();
-                stage.hide();
-            });
+            applyHideOnClose(stage);
             return trayNotifier;
         } catch (Throwable ex) {
             log.info("[MainApp] System tray indisponible, utilisation du fallback interne : {}", ex.getMessage());
             trayNotifier = null;
             trayManager = null;
             AppServices.clearTrayManager();
-            stage.setOnCloseRequest(null);
+            applyExitOnClose(stage);
             return new DialogDesktopNotifier();
         }
     }
@@ -199,6 +200,23 @@ public final class MainApp extends Application {
         trayManager = null;
         AppServices.clearTrayManager();
         AppServices.clearNotificationService();
+    }
+
+    private void applyHideOnClose(Stage stage) {
+        stage.setOnCloseRequest(evt -> {
+            evt.consume();
+            stage.hide();
+        });
+    }
+
+    private void applyExitOnClose(Stage stage) {
+        EventHandler<WindowEvent> delegate = defaultCloseHandler;
+        stage.setOnCloseRequest(evt -> {
+            stopNotifications();
+            if (delegate != null) {
+                delegate.handle(evt);
+            }
+        });
     }
 
     private Optional<AuthService.Session> promptLoginLoop(AuthService sec) {
