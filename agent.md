@@ -28,6 +28,9 @@ Ce document précise comment travailler efficacement avec l’agent IA sur ce d�
 - Logs: éviter toute donnée sensible dans les traces; conserver SLF4J simple (niveau via `org.slf4j.simpleLogger.defaultLogLevel`).
 
 ## Conventions de code
+- Commentaires: ajouter des commentaires brefs en francais quand la logique n'est pas evidente (par exemple detours UI/DAO/crypto), pour faciliter la lecture rapide.
+- Tests: chaque ajout ou correction doit venir avec des tests unitaires associes (JUnit) couvrant le nouveau comportement; adapter les tests existants si le contrat change.
+- Logs: en cas de souci ou pour diagnostiquer une regression, ajouter des logs SLF4J de niveau adapte (INFO/DEBUG) en evitant toute donnee sensible; retirer ou baisser le niveau si trop verbeux une fois le correctif valide.
 - Java 17: utilisation de `record` quand pertinent, `var` limité, API JavaFX moderne.
 - Base de données:
   - Toujours `PreparedStatement`, aucun SQL concaténé avec données utilisateur.

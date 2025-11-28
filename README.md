@@ -61,3 +61,7 @@ L'ancien module d'e-mails a été retiré. Les rappels s'affichent désormais da
 2. File > Open puis sélectionnez `pom.xml`.
 3. Confirmez l'import en tant que projet Maven.
 4. Lancez `org.example.MainApp` ou la cible Maven Run.
+
+## Devlog (journaldebord.txt)
+
+Creez et maintenez un fichier `journaldebord.txt` a la racine du projet comme journal de bord (devlog). A chaque modification ou action sur le plugin, ajoutez une ligne avec la date et une courte description en francais pour garder l'historique (exemple : `2025-10-12 - ajout de la recherche avancee`).
