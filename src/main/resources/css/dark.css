@@ -50,11 +50,18 @@
 .text-field,
 .password-field,
 .text-area,
-.date-picker > .text-field {
+.date-picker > .text-field,
+.spinner > .text-field {
     -fx-background-color: #26282b;
     -fx-text-fill: #ececec;
+    -fx-prompt-text-fill: #9aa0a6;
     -fx-border-color: #3f4246;
     -fx-border-radius: 6;
+    -fx-background-radius: 6;
+}
+
+.text-area .content {
+    -fx-background-color: #26282b;
     -fx-background-radius: 6;
 }
 
@@ -63,6 +70,154 @@
 .date-picker:focused > .text-field,
 .text-area:focused {
     -fx-border-color: -fx-accent;
+}
+
+.combo-box-base,
+.choice-box,
+.spinner,
+.date-picker {
+    -fx-background-color: #26282b;
+    -fx-border-color: #3f4246;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+}
+
+.combo-box-base:focused,
+.choice-box:focused,
+.spinner:focused,
+.date-picker:focused {
+    -fx-border-color: -fx-accent;
+}
+
+.combo-box-base .list-cell,
+.choice-box > .label,
+.check-box,
+.radio-button,
+.menu-bar .label,
+.menu-item .label,
+.context-menu .label,
+.date-picker-popup .label {
+    -fx-text-fill: #ececec;
+}
+
+.spinner {
+    -fx-padding: 0;
+}
+
+.spinner > .text-field {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.combo-box-base > .arrow-button,
+.date-picker > .arrow-button,
+.spinner > .increment-arrow-button,
+.spinner > .decrement-arrow-button {
+    -fx-background-color: #32353a;
+    -fx-background-radius: 0 6 6 0;
+}
+
+.spinner > .increment-arrow-button,
+.spinner > .decrement-arrow-button {
+    -fx-border-color: #3f4246;
+    -fx-border-width: 0 0 0 1;
+}
+
+.menu-bar {
+    -fx-background-color: linear-gradient(#1c1e21, #191b1d);
+    -fx-border-color: #2b2e31;
+    -fx-border-width: 0 0 1 0;
+}
+
+.menu-bar .menu-button {
+    -fx-background-color: transparent;
+}
+
+.menu-bar .menu-button:hover,
+.menu-bar .menu-button:showing {
+    -fx-background-color: #2a2d32;
+}
+
+.context-menu,
+.combo-box-popup .list-view,
+.date-picker-popup {
+    -fx-background-color: #212325;
+    -fx-border-color: #3b3d40;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+}
+
+.combo-box-popup .list-cell,
+.list-view .list-cell,
+.date-picker-popup .day-cell,
+.date-picker-popup .day-name-cell,
+.date-picker-popup .week-number-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: #ececec;
+}
+
+.combo-box-popup .list-cell:hover,
+.list-view .list-cell:hover,
+.menu-item:focused,
+.date-picker-popup .day-cell:hover {
+    -fx-background-color: #2a2d32;
+}
+
+.menu-item:focused .label,
+.date-picker-popup .day-cell:selected {
+    -fx-text-fill: -fx-selection-bar-text;
+}
+
+.date-picker-popup .day-cell:selected {
+    -fx-background-color: -fx-selection-bar;
+}
+
+.date-picker-popup > .month-year-pane {
+    -fx-background-color: #26282b;
+}
+
+.date-picker-popup .today {
+    -fx-border-color: -fx-accent;
+}
+
+.check-box .box,
+.radio-button .radio {
+    -fx-background-color: #26282b;
+    -fx-border-color: #3f4246;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+}
+
+.check-box:selected .mark,
+.radio-button:selected .dot {
+    -fx-background-color: -fx-accent;
+}
+
+.dialog-pane {
+    -fx-background-color: #1d1f21;
+    -fx-border-color: #3f4246;
+    -fx-border-width: 1;
+}
+
+.dialog-pane:header .header-panel {
+    -fx-background-color: #26282b;
+}
+
+.dialog-pane:header .header-panel .label,
+.dialog-pane > .content.label {
+    -fx-text-fill: #ececec;
+}
+
+.dialog-pane .header-panel,
+.dialog-pane .content,
+.dialog-pane .expandable-content,
+.dialog-pane .button-bar .container {
+    -fx-background-color: transparent;
+}
+
+.tooltip {
+    -fx-background-color: #111827;
+    -fx-text-fill: #ececec;
 }
 
 .progress-bar > .track { -fx-background-color: #323539; -fx-background-radius: 4; }
@@ -171,7 +326,7 @@
 .table-view .column-header .label { -fx-font-weight: bold; }
 
 /* (Optionnel) surligner les lignes prestataires avec impayés */
-// .table-row-cell:unpaid { -fx-background-color: rgba(255,165,0,0.08); }
+/* .table-row-cell:unpaid { -fx-background-color: rgba(255,165,0,0.08); } */
 .section-title {
     -fx-text-fill: #ececec;
     -fx-font-size: 12px;

@@ -12,6 +12,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import org.example.gui.Dialogs;
 import org.example.gui.ThemeManager;
 import org.example.security.AuthService;
 
@@ -204,6 +205,7 @@ public final class AccountManagerDialog extends Stage {
         confirm.setHeaderText("Supprimer le compte \"" + selected.username() + "\" ?");
         confirm.setContentText("Cette action est définitive. Les données chiffrées associées seront supprimées.");
         confirm.initOwner(getOwner());
+        ThemeManager.apply(confirm);
 
         Optional<ButtonType> res = confirm.showAndWait();
         if (res.isEmpty() || res.get() != ButtonType.OK) return;
@@ -348,24 +350,15 @@ public final class AccountManagerDialog extends Stage {
     }
 
     private void showWarning(String message) {
-        Alert alert = new Alert(Alert.AlertType.WARNING, message, ButtonType.OK);
-        alert.initOwner(getOwner());
-        alert.setHeaderText(null);
-        alert.showAndWait();
+        Dialogs.warning(getOwner(), null, message);
     }
 
     private void showError(String message) {
-        Alert alert = new Alert(Alert.AlertType.ERROR, message, ButtonType.OK);
-        alert.initOwner(getOwner());
-        alert.setHeaderText(null);
-        alert.showAndWait();
+        Dialogs.error(getOwner(), message);
     }
 
     private void showInfo(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION, message, ButtonType.OK);
-        alert.initOwner(getOwner());
-        alert.setHeaderText(title);
-        alert.showAndWait();
+        Dialogs.info(getOwner(), title, message);
     }
 
     private record Credentials(String username, char[] password) {

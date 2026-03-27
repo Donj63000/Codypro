@@ -4,6 +4,7 @@ import javafx.beans.binding.BooleanBinding;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
+import javafx.stage.Window;
 import org.example.security.AuthService;
 
 import java.util.Arrays;
@@ -41,7 +42,8 @@ public final class RegisterDialog extends Dialog<AuthService.Session> {
                 if (sess == null) throw new IllegalStateException("Échec de connexion après création");
                 return sess;
             } catch (Exception ex) {
-                new Alert(Alert.AlertType.ERROR, ex.getMessage(), ButtonType.OK).showAndWait();
+                Window owner = getDialogPane().getScene() == null ? null : getDialogPane().getScene().getWindow();
+                Dialogs.error(owner, ex.getMessage() == null ? "Impossible de crÃ©er le compte." : ex.getMessage());
                 return null;
             } finally {
                 Arrays.fill(pwd, '\0');
@@ -50,4 +52,3 @@ public final class RegisterDialog extends Dialog<AuthService.Session> {
         ThemeManager.apply(this);
     }
 }
-

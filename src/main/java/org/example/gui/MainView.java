@@ -1206,7 +1206,7 @@ public final class MainView {
 
     private static Label errorLabel(String msg) {
         Label l = new Label(msg);
-        l.setStyle("-fx-text-fill: -fx-danger;");
+        l.getStyleClass().add("error");
         return l;
     }
 }
