@@ -175,7 +175,7 @@ public final class MainApp extends Application {
             trayNotifier = null;
             trayManager = null;
             AppServices.clearTrayManager();
-            applyExitOnClose(stage);
+              applyExitOnClose(stage);
             return new DialogDesktopNotifier();
         }
     }

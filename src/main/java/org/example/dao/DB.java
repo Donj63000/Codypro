@@ -4,6 +4,7 @@ import org.example.model.Facture;
 import org.example.model.NotificationSettings;
 import org.example.model.Prestataire;
 import org.example.model.Rappel;
+import org.example.model.SmtpSecurity;
 import org.example.model.ServiceRow;
 import org.example.model.ServiceStatus;
 import org.sqlite.SQLiteConfig;
@@ -178,6 +179,14 @@ public class DB implements ConnectionProvider {
                         highlight_overdue INTEGER NOT NULL DEFAULT 1,
                         desktop_popup INTEGER NOT NULL DEFAULT 1,
                         snooze_minutes INTEGER NOT NULL DEFAULT 30,
+                        email_enabled INTEGER NOT NULL DEFAULT 0,
+                        email_recipient TEXT NOT NULL DEFAULT '',
+                        email_from TEXT NOT NULL DEFAULT '',
+                        smtp_host TEXT NOT NULL DEFAULT '',
+                        smtp_port INTEGER NOT NULL DEFAULT 587,
+                        smtp_username TEXT NOT NULL DEFAULT '',
+                        smtp_password TEXT NOT NULL DEFAULT '',
+                        smtp_security TEXT NOT NULL DEFAULT 'STARTTLS',
                         subject_template TEXT NOT NULL DEFAULT 'Facture {{prestataire}} : échéance le {{echeance}}',
                         body_template TEXT NOT NULL DEFAULT 'La facture {{facture}} d''un montant de {{montant}} pour {{prestataire}} arrive {{delai}}.\nStatut : {{statut}}.'
                     );""");
@@ -828,7 +837,8 @@ public class DB implements ConnectionProvider {
     public NotificationSettings loadNotificationSettings() {
         String sql = """
                 SELECT lead_days, reminder_hour, reminder_minute, repeat_every_hours, highlight_overdue,
-                       desktop_popup, snooze_minutes, subject_template, body_template
+                       desktop_popup, snooze_minutes, email_enabled, email_recipient, email_from, smtp_host,
+                       smtp_port, smtp_username, smtp_password, smtp_security, subject_template, body_template
                   FROM notification_settings
                  WHERE id=1
                 """;
@@ -844,6 +854,14 @@ public class DB implements ConnectionProvider {
                         rs.getInt("highlight_overdue") != 0,
                         rs.getInt("desktop_popup") != 0,
                         rs.getInt("snooze_minutes"),
+                        rs.getInt("email_enabled") != 0,
+                        rs.getString("email_recipient"),
+                        rs.getString("email_from"),
+                        rs.getString("smtp_host"),
+                        rs.getInt("smtp_port"),
+                        rs.getString("smtp_username"),
+                        rs.getString("smtp_password"),
+                        SmtpSecurity.from(rs.getString("smtp_security")),
                         rs.getString("subject_template"),
                         rs.getString("body_template")
                 ).normalized();
@@ -859,8 +877,10 @@ public class DB implements ConnectionProvider {
         String sql = """
                 INSERT INTO notification_settings
                     (id, lead_days, reminder_hour, reminder_minute, repeat_every_hours,
-                     highlight_overdue, desktop_popup, snooze_minutes, subject_template, body_template)
-                VALUES(1,?,?,?,?,?,?,?,?,?)
+                     highlight_overdue, desktop_popup, snooze_minutes, email_enabled, email_recipient,
+                     email_from, smtp_host, smtp_port, smtp_username, smtp_password, smtp_security,
+                     subject_template, body_template)
+                VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
                     lead_days=excluded.lead_days,
                     reminder_hour=excluded.reminder_hour,
@@ -869,6 +889,14 @@ public class DB implements ConnectionProvider {
                     highlight_overdue=excluded.highlight_overdue,
                     desktop_popup=excluded.desktop_popup,
                     snooze_minutes=excluded.snooze_minutes,
+                    email_enabled=excluded.email_enabled,
+                    email_recipient=excluded.email_recipient,
+                    email_from=excluded.email_from,
+                    smtp_host=excluded.smtp_host,
+                    smtp_port=excluded.smtp_port,
+                    smtp_username=excluded.smtp_username,
+                    smtp_password=excluded.smtp_password,
+                    smtp_security=excluded.smtp_security,
                     subject_template=excluded.subject_template,
                     body_template=excluded.body_template
                 """;
@@ -881,8 +909,16 @@ public class DB implements ConnectionProvider {
             ps.setInt(5, normalized.highlightOverdue() ? 1 : 0);
             ps.setInt(6, normalized.desktopPopup() ? 1 : 0);
             ps.setInt(7, normalized.snoozeMinutes());
-            ps.setString(8, normalized.subjectTemplate());
-            ps.setString(9, normalized.bodyTemplate());
+            ps.setInt(8, normalized.emailEnabled() ? 1 : 0);
+            ps.setString(9, normalized.emailRecipient());
+            ps.setString(10, normalized.emailFrom());
+            ps.setString(11, normalized.smtpHost());
+            ps.setInt(12, normalized.smtpPort());
+            ps.setString(13, normalized.smtpUsername());
+            ps.setString(14, normalized.smtpPassword());
+            ps.setString(15, normalized.smtpSecurity().name());
+            ps.setString(16, normalized.subjectTemplate());
+            ps.setString(17, normalized.bodyTemplate());
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException("Sauvegarde des réglages de notifications impossible : " + e.getMessage(), e);
@@ -1088,7 +1124,7 @@ public class DB implements ConnectionProvider {
         }
     }
 
-    private static void ensureNotificationSettingsSchema(Connection c) throws SQLException {
+    static void ensureNotificationSettingsSchema(Connection c) throws SQLException {
         try (Statement st = c.createStatement()) {
             st.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS notification_settings(
@@ -1100,6 +1136,14 @@ public class DB implements ConnectionProvider {
                         highlight_overdue INTEGER NOT NULL DEFAULT 1,
                         desktop_popup INTEGER NOT NULL DEFAULT 1,
                         snooze_minutes INTEGER NOT NULL DEFAULT 30,
+                        email_enabled INTEGER NOT NULL DEFAULT 0,
+                        email_recipient TEXT NOT NULL DEFAULT '',
+                        email_from TEXT NOT NULL DEFAULT '',
+                        smtp_host TEXT NOT NULL DEFAULT '',
+                        smtp_port INTEGER NOT NULL DEFAULT 587,
+                        smtp_username TEXT NOT NULL DEFAULT '',
+                        smtp_password TEXT NOT NULL DEFAULT '',
+                        smtp_security TEXT NOT NULL DEFAULT 'STARTTLS',
                         subject_template TEXT NOT NULL DEFAULT 'Facture {{prestataire}} : échéance le {{echeance}}',
                         body_template TEXT NOT NULL DEFAULT 'La facture {{facture}} d''un montant de {{montant}} pour {{prestataire}} arrive {{delai}}.\nStatut : {{statut}}.'
                     );
@@ -1116,6 +1160,14 @@ public class DB implements ConnectionProvider {
         ensureColumn(c, "notification_settings", "highlight_overdue", "INTEGER NOT NULL DEFAULT 1");
         ensureColumn(c, "notification_settings", "desktop_popup", "INTEGER NOT NULL DEFAULT 1");
         ensureColumn(c, "notification_settings", "snooze_minutes", "INTEGER NOT NULL DEFAULT 30");
+        ensureColumn(c, "notification_settings", "email_enabled", "INTEGER NOT NULL DEFAULT 0");
+        ensureColumn(c, "notification_settings", "email_recipient", "TEXT NOT NULL DEFAULT ''");
+        ensureColumn(c, "notification_settings", "email_from", "TEXT NOT NULL DEFAULT ''");
+        ensureColumn(c, "notification_settings", "smtp_host", "TEXT NOT NULL DEFAULT ''");
+        ensureColumn(c, "notification_settings", "smtp_port", "INTEGER NOT NULL DEFAULT 587");
+        ensureColumn(c, "notification_settings", "smtp_username", "TEXT NOT NULL DEFAULT ''");
+        ensureColumn(c, "notification_settings", "smtp_password", "TEXT NOT NULL DEFAULT ''");
+        ensureColumn(c, "notification_settings", "smtp_security", "TEXT NOT NULL DEFAULT 'STARTTLS'");
         ensureColumn(c, "notification_settings", "subject_template", "TEXT NOT NULL DEFAULT 'Facture {{prestataire}} : échéance le {{echeance}}'");
         ensureColumn(c, "notification_settings", "body_template", "TEXT NOT NULL DEFAULT 'La facture {{facture}} d''un montant de {{montant}} pour {{prestataire}} arrive {{delai}}.\nStatut : {{statut}}.'");
     }

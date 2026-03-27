@@ -14,6 +14,14 @@ public record NotificationSettings(
         boolean highlightOverdue,
         boolean desktopPopup,
         int snoozeMinutes,
+        boolean emailEnabled,
+        String emailRecipient,
+        String emailFrom,
+        String smtpHost,
+        int smtpPort,
+        String smtpUsername,
+        String smtpPassword,
+        SmtpSecurity smtpSecurity,
         String subjectTemplate,
         String bodyTemplate
 ) {
@@ -24,6 +32,8 @@ public record NotificationSettings(
     private static final int MAX_REPEAT_HOURS = 72;
     private static final int MIN_SNOOZE_MINUTES = 5;
     private static final int MAX_SNOOZE_MINUTES = 720;
+    private static final int MIN_SMTP_PORT = 1;
+    private static final int MAX_SMTP_PORT = 65535;
 
     public static NotificationSettings defaults() {
         return new NotificationSettings(
@@ -34,6 +44,14 @@ public record NotificationSettings(
                 true,
                 true,
                 30,
+                false,
+                "",
+                "",
+                "",
+                587,
+                "",
+                "",
+                SmtpSecurity.STARTTLS,
                 "Facture {{prestataire}} : échéance le {{echeance}}",
                 """
                         La facture {{facture}} d'un montant de {{montant}} pour {{prestataire}} arrive {{delai}}.
@@ -50,6 +68,13 @@ public record NotificationSettings(
         safeMinute -= safeMinute % 5;
         int safeRepeat = clamp(repeatEveryHours, MIN_REPEAT_HOURS, MAX_REPEAT_HOURS);
         int safeSnooze = clamp(snoozeMinutes, MIN_SNOOZE_MINUTES, MAX_SNOOZE_MINUTES);
+        int safePort = clamp(smtpPort, MIN_SMTP_PORT, MAX_SMTP_PORT);
+        String safeRecipient = sanitizeValue(emailRecipient);
+        String safeFrom = sanitizeValue(emailFrom);
+        String safeHost = sanitizeValue(smtpHost);
+        String safeUser = sanitizeValue(smtpUsername);
+        String safePassword = smtpPassword == null ? "" : smtpPassword;
+        SmtpSecurity safeSecurity = smtpSecurity == null ? SmtpSecurity.STARTTLS : smtpSecurity;
         String subject = sanitizeTemplate(subjectTemplate, defaults().subjectTemplate());
         String body = sanitizeTemplate(bodyTemplate, defaults().bodyTemplate());
         return new NotificationSettings(
@@ -60,6 +85,14 @@ public record NotificationSettings(
                 highlightOverdue,
                 desktopPopup,
                 safeSnooze,
+                emailEnabled,
+                safeRecipient,
+                safeFrom,
+                safeHost,
+                safePort,
+                safeUser,
+                safePassword,
+                safeSecurity,
                 subject,
                 body
         );
@@ -88,6 +121,23 @@ public record NotificationSettings(
             }
         }
         return sanitized.toString();
+    }
+
+    private static String sanitizeValue(String value) {
+        return value == null ? "" : value.strip();
+    }
+
+    public boolean emailReady() {
+        if (!emailEnabled) {
+            return false;
+        }
+        if (emailRecipient == null || emailRecipient.isBlank()) {
+            return false;
+        }
+        if (smtpHost == null || smtpHost.isBlank()) {
+            return false;
+        }
+        return smtpPort >= MIN_SMTP_PORT && smtpPort <= MAX_SMTP_PORT;
     }
 
     public String summary(Locale locale) {

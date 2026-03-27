@@ -27,6 +27,14 @@ class NotificationSettingsTest {
                     true,
                     false,
                     1,              // below snooze minimum
+                    true,
+                    "   ",
+                    " from@example.com ",
+                    " smtp.example.com ",
+                    70000,
+                    " user ",
+                    "secret",
+                    SmtpSecurity.SSL,
                     "   ",          // should fallback to default
                     "Chantier {{facture}}   \r\n  Prévoyez {{delai}}  "
             );
@@ -40,6 +48,13 @@ class NotificationSettingsTest {
             assertTrue(normalized.highlightOverdue());
             assertFalse(normalized.desktopPopup());
             assertEquals(5, normalized.snoozeMinutes());
+            assertEquals("", normalized.emailRecipient());
+            assertEquals("from@example.com", normalized.emailFrom());
+            assertEquals("smtp.example.com", normalized.smtpHost());
+            assertEquals(65535, normalized.smtpPort());
+            assertEquals("user", normalized.smtpUsername());
+            assertEquals("secret", normalized.smtpPassword());
+            assertEquals(SmtpSecurity.SSL, normalized.smtpSecurity());
             assertEquals(defaults.subjectTemplate(), normalized.subjectTemplate());
             assertEquals("Chantier {{facture}}\n  Prévoyez {{delai}}", normalized.bodyTemplate());
         }
@@ -56,6 +71,14 @@ class NotificationSettingsTest {
                 false,
                 true,
                 45,
+                false,
+                "",
+                "",
+                "",
+                587,
+                "",
+                "",
+                SmtpSecurity.STARTTLS,
                 "Sujet",
                 "Corps"
         );
