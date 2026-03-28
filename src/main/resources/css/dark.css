@@ -691,3 +691,107 @@
     -fx-border-color: rgba(148, 163, 184, 0.25);
     -fx-padding: 16 0 0 0;
 }
+
+
+.reminder-center-dialog {
+    -fx-background-color: linear-gradient(to bottom, rgba(15,23,42,0.98), rgba(17,24,39,0.98));
+    -fx-border-color: rgba(148, 163, 184, 0.28);
+    -fx-border-width: 1;
+    -fx-border-radius: 14;
+    -fx-background-radius: 14;
+}
+
+.reminder-hero {
+    -fx-background-color: linear-gradient(to right, rgba(255, 149, 0, 0.22), rgba(59, 130, 246, 0.18));
+    -fx-border-color: rgba(148, 163, 184, 0.28);
+    -fx-border-width: 1;
+    -fx-border-radius: 14;
+    -fx-background-radius: 14;
+    -fx-padding: 16;
+    -fx-spacing: 8;
+}
+
+.reminder-tabs > .tab-header-area {
+    -fx-padding: 0 0 8 0;
+}
+
+.reminder-tabs > .tab-header-area > .tab-header-background {
+    -fx-background-color: transparent;
+}
+
+.reminder-tabs > .tab-header-area .tab {
+    -fx-background-color: rgba(30, 41, 59, 0.92);
+    -fx-border-color: rgba(148, 163, 184, 0.22);
+    -fx-border-radius: 10 10 0 0;
+    -fx-background-radius: 10 10 0 0;
+    -fx-padding: 8 14;
+}
+
+.reminder-tabs > .tab-header-area .tab:selected {
+    -fx-background-color: rgba(15, 23, 42, 0.96);
+    -fx-border-color: rgba(99, 102, 241, 0.30);
+}
+
+.reminder-tabs > .tab-content-area {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.status-cards {
+    -fx-padding: 0 0 4 0;
+}
+
+.status-card {
+    -fx-background-color: linear-gradient(to bottom, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.92));
+    -fx-border-color: rgba(148, 163, 184, 0.24);
+    -fx-border-width: 1;
+    -fx-border-radius: 14;
+    -fx-background-radius: 14;
+    -fx-padding: 16;
+    -fx-spacing: 8;
+    -fx-min-height: 122;
+}
+
+.status-card-title {
+    -fx-text-fill: #94a3b8;
+    -fx-font-size: 12px;
+    -fx-font-weight: 700;
+}
+
+.status-card-value {
+    -fx-text-fill: #f8fafc;
+    -fx-font-size: 19px;
+    -fx-font-weight: 800;
+}
+
+.status-card-caption {
+    -fx-text-fill: #cbd5e1;
+    -fx-font-size: 12px;
+}
+
+.status-pill-ok {
+    -fx-background-color: rgba(34, 197, 94, 0.24);
+    -fx-text-fill: #bbf7d0;
+}
+
+.status-pill-warn {
+    -fx-background-color: rgba(245, 158, 11, 0.26);
+    -fx-text-fill: #fde68a;
+}
+
+.status-pill-off {
+    -fx-background-color: rgba(148, 163, 184, 0.24);
+    -fx-text-fill: #e2e8f0;
+}
+
+.history-details {
+    -fx-background-color: rgba(15, 23, 42, 0.96);
+    -fx-border-color: rgba(148, 163, 184, 0.24);
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+}
+
+.history-details .content {
+    -fx-background-color: rgba(15, 23, 42, 0.96);
+    -fx-background-radius: 12;
+}

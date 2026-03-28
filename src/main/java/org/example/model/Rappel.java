@@ -87,6 +87,36 @@ public record Rappel(
         return normalized;
     }
 
+    public boolean isManagerFlow() {
+        return type.startsWith("MANAGER_");
+    }
+
+    public boolean isSupplierFlow() {
+        return type.startsWith("SUPPLIER_");
+    }
+
+    public String flowLabel() {
+        return switch (type) {
+            case TYPE_MANAGER_PRE -> "Gestionnaire · préavis";
+            case TYPE_MANAGER_DUE -> "Gestionnaire · échéance";
+            case TYPE_MANAGER_OVERDUE -> "Gestionnaire · retard";
+            case TYPE_SUPPLIER_PRE -> "Prestataire · préavis";
+            case TYPE_SUPPLIER_DUE -> "Prestataire · échéance";
+            case TYPE_SUPPLIER_OVERDUE -> "Prestataire · retard";
+            default -> type;
+        };
+    }
+
+    public String statusLabel() {
+        return switch (statut) {
+            case STATUS_PENDING -> "En attente";
+            case STATUS_SENT -> "Envoyé";
+            case STATUS_FAILED -> "Échec";
+            case STATUS_SKIPPED -> "Ignoré";
+            default -> statut;
+        };
+    }
+
     private static String validateStatus(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.isEmpty()) {

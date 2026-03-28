@@ -20,6 +20,7 @@ import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import javax.crypto.SecretKey;
 import java.sql.*;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -502,6 +503,18 @@ public class DB implements ConnectionProvider {
         }
     }
 
+    public Facture findFacture(int id) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT * FROM factures WHERE id=?")) {
+            ps.setInt(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? toFacture(rs) : null;
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public void addService(int pid, String desc) {
         ServiceRow row = new ServiceRow(null, desc, DATE_FR.format(LocalDate.now()), ServiceStatus.EN_ATTENTE);
         insertService(pid, row);
@@ -639,10 +652,15 @@ public class DB implements ConnectionProvider {
     }
 
     public void updateFacture(Facture f) {
+        Facture current = findFacture(facId(f));
+        boolean payee = facPayee(f);
+        boolean resetPreavis = shouldResetPreavis(current, f, payee);
+        int preavis = resetPreavis ? 0 : (f.isPreavisEnvoye() ? 1 : 0);
+
         String sql = """
         UPDATE factures SET description=?, echeance=?, echeance_ts=?,
                montant_ht=?, tva_pct=?, montant_tva=?, montant_ttc=?, devise=?,
-               paye=?, date_paiement=?, date_paiement_ts=?
+               paye=?, date_paiement=?, date_paiement_ts=?, preavis_envoye=?
         WHERE id=?
     """;
         try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
@@ -654,7 +672,6 @@ public class DB implements ConnectionProvider {
             BigDecimal mTva = facTva(ht, tvaPct);
             BigDecimal ttc  = facTtc(f, ht, mTva);
             String devise   = facDevise(f);
-            boolean payee   = facPayee(f);
             String payFr    = facPayStr(f);
             Long   payTs    = facPayTs(f);
 
@@ -669,8 +686,12 @@ public class DB implements ConnectionProvider {
             ps.setInt(9, payee ? 1 : 0);
             ps.setString(10, payFr);
             if (payTs == null) ps.setNull(11, Types.BIGINT); else ps.setLong(11, payTs);
-            ps.setInt(12, facId(f));
+            ps.setInt(12, preavis);
+            ps.setInt(13, facId(f));
             ps.executeUpdate();
+            if (resetPreavis) {
+                skipPendingRappelsForFacture(facId(f), "Relances obsolètes après modification de la facture.");
+            }
         } catch (SQLException e) { throw new RuntimeException(e); }
     }
 
@@ -683,18 +704,22 @@ public class DB implements ConnectionProvider {
     }
 
     public void toggleFacturePayee(int id, boolean payee, Long datePaiementTs, String datePaiementFr) {
-        String sql = "UPDATE factures SET paye=?, date_paiement=?, date_paiement_ts=? WHERE id=?";
+        String sql = "UPDATE factures SET paye=?, date_paiement=?, date_paiement_ts=?, preavis_envoye=CASE WHEN ?=0 THEN 0 ELSE preavis_envoye END WHERE id=?";
         try (Connection c = getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setInt(1, payee?1:0);
+            ps.setInt(1, payee ? 1 : 0);
             if (payee) {
                 ps.setString(2, datePaiementFr);
-                if (datePaiementTs==null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, datePaiementTs);
+                if (datePaiementTs == null) ps.setNull(3, Types.BIGINT); else ps.setLong(3, datePaiementTs);
             } else {
                 ps.setNull(2, Types.VARCHAR);
                 ps.setNull(3, Types.BIGINT);
             }
-            ps.setInt(4, id);
+            ps.setInt(4, payee ? 1 : 0);
+            ps.setInt(5, id);
             ps.executeUpdate();
+            skipPendingRappelsForFacture(id, payee
+                    ? "Facture marquée réglée."
+                    : "Facture repassée impayée ; relances réinitialisées.");
         } catch (SQLException e) { throw new RuntimeException(e); }
     }
 
@@ -737,7 +762,7 @@ public class DB implements ConnectionProvider {
     }
 
     public void setFacturePayee(int id, boolean payee) {
-        String sql = "UPDATE factures SET paye=?,date_paiement=?,date_paiement_ts=? WHERE id=?";
+        String sql = "UPDATE factures SET paye=?,date_paiement=?,date_paiement_ts=?,preavis_envoye=CASE WHEN ?=0 THEN 0 ELSE preavis_envoye END WHERE id=?";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, payee ? 1 : 0);
@@ -749,11 +774,54 @@ public class DB implements ConnectionProvider {
                 ps.setNull(2, Types.VARCHAR);
                 ps.setNull(3, Types.INTEGER);
             }
-            ps.setInt(4, id);
+            ps.setInt(4, payee ? 1 : 0);
+            ps.setInt(5, id);
             ps.executeUpdate();
+            skipPendingRappelsForFacture(id, payee
+                    ? "Facture marquée réglée."
+                    : "Facture repassée impayée ; relances réinitialisées.");
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private boolean shouldResetPreavis(Facture current, Facture updated, boolean nextPaid) {
+        if (nextPaid || updated == null || current == null) {
+            return false;
+        }
+        if (current.isPaye() && !nextPaid) {
+            return true;
+        }
+        if (!Objects.equals(current.getEcheance(), updated.getEcheance())) {
+            return true;
+        }
+        if (!Objects.equals(safeText(current.getDescription()), safeText(updated.getDescription()))) {
+            return true;
+        }
+        if (!sameMoney(current.getMontantHt(), updated.getMontantHt())) {
+            return true;
+        }
+        if (!sameMoney(current.getTvaPct(), updated.getTvaPct())) {
+            return true;
+        }
+        if (!sameMoney(current.getMontantTtc(), updated.getMontantTtc())) {
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean sameMoney(BigDecimal left, BigDecimal right) {
+        if (left == null && right == null) {
+            return true;
+        }
+        if (left == null || right == null) {
+            return false;
+        }
+        return left.compareTo(right) == 0;
+    }
+
+    private static String safeText(String value) {
+        return value == null ? "" : value.trim();
     }
 
     public List<Facture> factures(int pid, Boolean payee) {
@@ -834,8 +902,9 @@ public class DB implements ConnectionProvider {
     public NotificationSettings loadNotificationSettings() {
         String sql = """
                 SELECT lead_days, reminder_hour, reminder_minute, repeat_every_hours, highlight_overdue,
-                       desktop_popup, snooze_minutes, email_enabled, email_recipient, email_from, smtp_host,
-                       smtp_port, smtp_username, smtp_password, smtp_security, subject_template, body_template,
+                       desktop_popup, snooze_minutes, email_enabled, email_recipient, email_from,
+                       email_from_name, email_reply_to, email_signature, smtp_host, smtp_port,
+                       smtp_username, smtp_password, smtp_security, subject_template, body_template,
                        supplier_email_enabled, supplier_send_on_due_date, supplier_subject_template, supplier_body_template
                   FROM notification_settings
                  WHERE id=1
@@ -855,6 +924,9 @@ public class DB implements ConnectionProvider {
                         rs.getInt("email_enabled") != 0,
                         rs.getString("email_recipient"),
                         rs.getString("email_from"),
+                        rs.getString("email_from_name"),
+                        rs.getString("email_reply_to"),
+                        rs.getString("email_signature"),
                         rs.getString("smtp_host"),
                         rs.getInt("smtp_port"),
                         rs.getString("smtp_username"),
@@ -880,10 +952,11 @@ public class DB implements ConnectionProvider {
                 INSERT INTO notification_settings
                     (id, lead_days, reminder_hour, reminder_minute, repeat_every_hours,
                      highlight_overdue, desktop_popup, snooze_minutes, email_enabled, email_recipient,
-                     email_from, smtp_host, smtp_port, smtp_username, smtp_password, smtp_security,
+                     email_from, email_from_name, email_reply_to, email_signature,
+                     smtp_host, smtp_port, smtp_username, smtp_password, smtp_security,
                      subject_template, body_template, supplier_email_enabled, supplier_send_on_due_date,
                      supplier_subject_template, supplier_body_template)
-                VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
                     lead_days=excluded.lead_days,
                     reminder_hour=excluded.reminder_hour,
@@ -895,6 +968,9 @@ public class DB implements ConnectionProvider {
                     email_enabled=excluded.email_enabled,
                     email_recipient=excluded.email_recipient,
                     email_from=excluded.email_from,
+                    email_from_name=excluded.email_from_name,
+                    email_reply_to=excluded.email_reply_to,
+                    email_signature=excluded.email_signature,
                     smtp_host=excluded.smtp_host,
                     smtp_port=excluded.smtp_port,
                     smtp_username=excluded.smtp_username,
@@ -919,17 +995,20 @@ public class DB implements ConnectionProvider {
             ps.setInt(8, normalized.emailEnabled() ? 1 : 0);
             ps.setString(9, normalized.emailRecipient());
             ps.setString(10, normalized.emailFrom());
-            ps.setString(11, normalized.smtpHost());
-            ps.setInt(12, normalized.smtpPort());
-            ps.setString(13, normalized.smtpUsername());
-            ps.setString(14, encodeNotificationSecret(normalized.smtpPassword()));
-            ps.setString(15, normalized.smtpSecurity().name());
-            ps.setString(16, normalized.subjectTemplate());
-            ps.setString(17, normalized.bodyTemplate());
-            ps.setInt(18, normalized.supplierEmailEnabled() ? 1 : 0);
-            ps.setInt(19, normalized.supplierSendOnDueDate() ? 1 : 0);
-            ps.setString(20, normalized.supplierSubjectTemplate());
-            ps.setString(21, normalized.supplierBodyTemplate());
+            ps.setString(11, normalized.emailFromName());
+            ps.setString(12, normalized.emailReplyTo());
+            ps.setString(13, normalized.emailSignature());
+            ps.setString(14, normalized.smtpHost());
+            ps.setInt(15, normalized.smtpPort());
+            ps.setString(16, normalized.smtpUsername());
+            ps.setString(17, encodeNotificationSecret(normalized.smtpPassword()));
+            ps.setString(18, normalized.smtpSecurity().name());
+            ps.setString(19, normalized.subjectTemplate());
+            ps.setString(20, normalized.bodyTemplate());
+            ps.setInt(21, normalized.supplierEmailEnabled() ? 1 : 0);
+            ps.setInt(22, normalized.supplierSendOnDueDate() ? 1 : 0);
+            ps.setString(23, normalized.supplierSubjectTemplate());
+            ps.setString(24, normalized.supplierBodyTemplate());
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException("Sauvegarde des réglages de notifications impossible : " + e.getMessage(), e);
@@ -1043,6 +1122,49 @@ public class DB implements ConnectionProvider {
         }
     }
 
+    public int countRappelsByStatus(String status) {
+        String normalized = status == null ? "" : status.trim();
+        if (normalized.isBlank()) {
+            return 0;
+        }
+        String sql = "SELECT COUNT(*) FROM rappels WHERE statut=?";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, normalized);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public Map<Integer, Instant> latestReminderActivityByFacture() {
+        String sql = """
+                SELECT facture_id,
+                       MAX(COALESCE(sent_at_ts, date_envoi_ts)) AS ts
+                  FROM rappels
+                 WHERE facture_id IS NOT NULL
+                   AND statut IN ('PENDING','FAILED','SENT')
+                 GROUP BY facture_id
+                """;
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            Map<Integer, Instant> out = new HashMap<>();
+            while (rs.next()) {
+                long ts = rs.getLong("ts");
+                if (rs.wasNull()) {
+                    continue;
+                }
+                out.put(rs.getInt("facture_id"), Instant.ofEpochSecond(ts));
+            }
+            return out;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public void markRappelEnvoye(int id) {
         String sql = """
                 UPDATE rappels
@@ -1102,6 +1224,26 @@ public class DB implements ConnectionProvider {
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, reason == null ? "" : reason.strip());
             ps.setInt(2, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void skipPendingRappelsForFacture(int factureId, String reason) {
+        String sql = """
+                UPDATE rappels
+                   SET envoye=0,
+                       statut='SKIPPED',
+                       last_error=?
+                 WHERE facture_id=?
+                   AND envoye=0
+                   AND statut IN ('PENDING','FAILED')
+                """;
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, reason == null ? "" : reason.strip());
+            ps.setInt(2, factureId);
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -1386,17 +1528,28 @@ public class DB implements ConnectionProvider {
                         email_enabled INTEGER NOT NULL DEFAULT 0,
                         email_recipient TEXT NOT NULL DEFAULT '',
                         email_from TEXT NOT NULL DEFAULT '',
+                        email_from_name TEXT NOT NULL DEFAULT 'Prestataires Manager',
+                        email_reply_to TEXT NOT NULL DEFAULT '',
+                        email_signature TEXT NOT NULL DEFAULT 'Cordialement,
+Prestataires Manager',
                         smtp_host TEXT NOT NULL DEFAULT '',
                         smtp_port INTEGER NOT NULL DEFAULT 587,
                         smtp_username TEXT NOT NULL DEFAULT '',
                         smtp_password TEXT NOT NULL DEFAULT '',
                         smtp_security TEXT NOT NULL DEFAULT 'STARTTLS',
                         subject_template TEXT NOT NULL DEFAULT 'Alerte échéance - {{prestataire}} - {{facture}}',
-                        body_template TEXT NOT NULL DEFAULT 'Le prestataire {{prestataire}} a une facture {{facture}} de {{montant}} qui arrive {{delai}}.\nÉchéance : {{echeance}}.\nStatut : {{statut}}.',
+                        body_template TEXT NOT NULL DEFAULT 'Le prestataire {{prestataire}} a une facture {{facture}} de {{montant}} qui arrive {{delai}}.
+Échéance : {{echeance}}.
+Statut : {{statut}}.',
                         supplier_email_enabled INTEGER NOT NULL DEFAULT 0,
                         supplier_send_on_due_date INTEGER NOT NULL DEFAULT 1,
                         supplier_subject_template TEXT NOT NULL DEFAULT 'Rappel de paiement - {{facture}} - échéance {{echeance}}',
-                        supplier_body_template TEXT NOT NULL DEFAULT 'Bonjour {{prestataire}},\n\nNous vous rappelons que la facture {{facture}} d''un montant de {{montant}} arrive {{delai}}.\nDate d''échéance : {{echeance}}.\n\nMerci de procéder au règlement dans les délais.'
+                        supplier_body_template TEXT NOT NULL DEFAULT 'Bonjour {{prestataire}},
+
+Nous vous rappelons que la facture {{facture}} d''un montant de {{montant}} arrive {{delai}}.
+Date d''échéance : {{echeance}}.
+
+Merci de procéder au règlement dans les délais.'
                     );
                     """);
             st.executeUpdate("""
@@ -1414,6 +1567,9 @@ public class DB implements ConnectionProvider {
         ensureColumn(c, "notification_settings", "email_enabled", "INTEGER NOT NULL DEFAULT 0");
         ensureColumn(c, "notification_settings", "email_recipient", "TEXT NOT NULL DEFAULT ''");
         ensureColumn(c, "notification_settings", "email_from", "TEXT NOT NULL DEFAULT ''");
+        ensureColumn(c, "notification_settings", "email_from_name", "TEXT NOT NULL DEFAULT 'Prestataires Manager'");
+        ensureColumn(c, "notification_settings", "email_reply_to", "TEXT NOT NULL DEFAULT ''");
+        ensureColumn(c, "notification_settings", "email_signature", "TEXT NOT NULL DEFAULT 'Cordialement\nPrestataires Manager'");
         ensureColumn(c, "notification_settings", "smtp_host", "TEXT NOT NULL DEFAULT ''");
         ensureColumn(c, "notification_settings", "smtp_port", "INTEGER NOT NULL DEFAULT 587");
         ensureColumn(c, "notification_settings", "smtp_username", "TEXT NOT NULL DEFAULT ''");

@@ -12,6 +12,7 @@ import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
+import javafx.geometry.Rectangle2D;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
@@ -74,7 +75,7 @@ public final class MainView {
     private final Button btnFactures = new Button("Factures");
     private final Button btnExport = new Button("Exporter PDF");
     private final Button btnRefresh = new Button("Recharger");
-    private final Button btnNotifications = new Button("Centre de relances");
+    private final Button btnNotifications = new Button("Emails & relances");
     private final Button btnAccount = new Button("Configuration du compte");
 
     private final GridPane fichePane = new GridPane();
@@ -138,7 +139,7 @@ public final class MainView {
         btnAccount.getStyleClass().addAll("outline", "header-action");
         btnAccount.setOnAction(e -> openAccountManager());
         btnNotifications.getStyleClass().addAll("outline", "header-action");
-        btnNotifications.setTooltip(new Tooltip("Configurer les alertes automatiques, les emails internes et les relances prestataires."));
+        btnNotifications.setTooltip(new Tooltip("Configurer le centre emailing, les tests SMTP, les emails gestionnaire et les relances prestataires."));
         btnNotifications.setOnAction(e -> openNotificationSettings());
         sessionLabel.getStyleClass().add("session-indicator");
 
@@ -151,8 +152,8 @@ public final class MainView {
         refreshItem.setOnAction(e -> reload(tfSearch.getText().trim()));
         menuFile.getItems().add(refreshItem);
 
-        Menu menuNotifications = new Menu("Notifications");
-        MenuItem remindersItem = new MenuItem("Centre de relances");
+        Menu menuNotifications = new Menu("Emails & relances");
+        MenuItem remindersItem = new MenuItem("Centre emailing & relances");
         remindersItem.setOnAction(e -> openNotificationSettings());
         menuNotifications.getItems().add(remindersItem);
 
@@ -195,7 +196,11 @@ public final class MainView {
             }
             Image image = new Image(url.toExternalForm());
             ImageView view = new ImageView(image);
-            view.setFitHeight(40);
+            Rectangle2D viewport = computeOpaqueViewport(image);
+            if (viewport != null) {
+                view.setViewport(viewport);
+            }
+            view.setFitHeight(68);
             view.setPreserveRatio(true);
             view.setSmooth(true);
             return view;
@@ -204,16 +209,49 @@ public final class MainView {
         }
     }
 
+    private Rectangle2D computeOpaqueViewport(Image image) {
+        var reader = image.getPixelReader();
+        if (reader == null) {
+            return null;
+        }
+        int width = (int) Math.round(image.getWidth());
+        int height = (int) Math.round(image.getHeight());
+        int minX = width;
+        int minY = height;
+        int maxX = -1;
+        int maxY = -1;
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int alpha = (reader.getArgb(x, y) >>> 24) & 0xff;
+                if (alpha <= 8) {
+                    continue;
+                }
+                if (x < minX) {
+                    minX = x;
+                }
+                if (y < minY) {
+                    minY = y;
+                }
+                if (x > maxX) {
+                    maxX = x;
+                }
+                if (y > maxY) {
+                    maxY = y;
+                }
+            }
+        }
+        if (maxX < minX || maxY < minY) {
+            return null;
+        }
+        int padding = 6;
+        int startX = Math.max(0, minX - padding);
+        int startY = Math.max(0, minY - padding);
+        int endX = Math.min(width - 1, maxX + padding);
+        int endY = Math.min(height - 1, maxY + padding);
+        return new Rectangle2D(startX, startY, endX - startX + 1, endY - startY + 1);
+    }
+
     private VBox buildHeader(ImageView logoView) {
-        Label titleLabel = new Label("Gestion des Prestataires");
-        titleLabel.getStyleClass().add("app-title");
-
-        Label subtitleLabel = new Label("Suivez services, factures et relances sans quitter votre tableau de bord");
-        subtitleLabel.getStyleClass().add("app-subtitle");
-
-        VBox titleGroup = new VBox(4, titleLabel, subtitleLabel);
-        titleGroup.getStyleClass().add("title-block");
-
         HBox sessionBox = new HBox(12, sessionLabel, btnNotifications, btnAccount);
         sessionBox.setAlignment(Pos.CENTER_RIGHT);
         sessionBox.getStyleClass().add("session-box");
@@ -223,12 +261,12 @@ public final class MainView {
         headerLine.getStyleClass().add("app-header");
         if (logoView != null) {
             logoView.getStyleClass().add("app-logo");
-            HBox.setMargin(logoView, new Insets(0, 12, 0, 0));
+            HBox.setMargin(logoView, new Insets(0, 8, 0, 0));
             headerLine.getChildren().add(logoView);
         }
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        headerLine.getChildren().addAll(titleGroup, spacer, sessionBox);
+        headerLine.getChildren().addAll(spacer, sessionBox);
 
         metricsBar.setAlignment(Pos.CENTER_LEFT);
         if (!metricsBar.getStyleClass().contains("metrics-bar")) {

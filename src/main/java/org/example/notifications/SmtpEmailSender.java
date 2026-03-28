@@ -11,6 +11,7 @@ import org.example.model.NotificationSettings;
 import org.example.model.SmtpSecurity;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Date;
 import java.util.Objects;
 import java.util.Properties;
 
@@ -51,12 +52,32 @@ public final class SmtpEmailSender implements EmailSender {
 
         Session session = Session.getInstance(props, authenticator);
         MimeMessage mime = new MimeMessage(session);
-        mime.setFrom(new InternetAddress(message.from()));
-        mime.setRecipients(Message.RecipientType.TO, InternetAddress.parse(message.to(), false));
+
+        InternetAddress from = new InternetAddress(message.from(), false);
+        from.validate();
+        String fromName = message.fromName() == null ? "" : message.fromName().strip();
+        if (!fromName.isBlank()) {
+            from.setPersonal(fromName, StandardCharsets.UTF_8.name());
+        }
+        mime.setFrom(from);
+
+        if (message.replyTo() != null && !message.replyTo().isBlank()) {
+            InternetAddress replyTo = new InternetAddress(message.replyTo(), false);
+            replyTo.validate();
+            mime.setReplyTo(new InternetAddress[]{replyTo});
+        }
+
+        InternetAddress[] recipients = InternetAddress.parse(message.to(), false);
+        for (InternetAddress recipient : recipients) {
+            recipient.validate();
+        }
+        mime.setRecipients(Message.RecipientType.TO, recipients);
+
         String subject = message.subject() == null ? "" : message.subject();
         String body = message.body() == null ? "" : message.body();
         mime.setSubject(subject, StandardCharsets.UTF_8.name());
         mime.setText(body, StandardCharsets.UTF_8.name());
+        mime.setSentDate(new Date());
         Transport.send(mime);
     }
 }

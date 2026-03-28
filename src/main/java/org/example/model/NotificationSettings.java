@@ -1,6 +1,9 @@
 package org.example.model;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 public record NotificationSettings(
         int leadDays,
@@ -13,6 +16,9 @@ public record NotificationSettings(
         boolean emailEnabled,
         String emailRecipient,
         String emailFrom,
+        String emailFromName,
+        String emailReplyTo,
+        String emailSignature,
         String smtpHost,
         int smtpPort,
         String smtpUsername,
@@ -34,6 +40,7 @@ public record NotificationSettings(
     private static final int MAX_SNOOZE_MINUTES = 720;
     private static final int MIN_SMTP_PORT = 1;
     private static final int MAX_SMTP_PORT = 65535;
+    private static final Pattern SIMPLE_EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     public NotificationSettings(
             int leadDays,
@@ -65,6 +72,9 @@ public record NotificationSettings(
                 emailEnabled,
                 emailRecipient,
                 emailFrom,
+                defaults().emailFromName(),
+                "",
+                defaults().emailSignature(),
                 smtpHost,
                 smtpPort,
                 smtpUsername,
@@ -91,6 +101,9 @@ public record NotificationSettings(
                 false,
                 "",
                 "",
+                "Prestataires Manager",
+                "",
+                "Cordialement,\nPrestataires Manager",
                 "",
                 587,
                 "",
@@ -121,6 +134,9 @@ public record NotificationSettings(
         int safePort = clamp(smtpPort, MIN_SMTP_PORT, MAX_SMTP_PORT);
         String safeRecipient = sanitizeValue(emailRecipient);
         String safeFrom = sanitizeValue(emailFrom);
+        String safeFromName = sanitizeValue(emailFromName);
+        String safeReplyTo = sanitizeValue(emailReplyTo);
+        String safeSignature = sanitizeMultiline(emailSignature, defaults.emailSignature());
         String safeHost = sanitizeValue(smtpHost);
         String safeUser = sanitizeValue(smtpUsername);
         String safePassword = smtpPassword == null ? "" : smtpPassword;
@@ -140,6 +156,9 @@ public record NotificationSettings(
                 emailEnabled,
                 safeRecipient,
                 safeFrom,
+                safeFromName,
+                safeReplyTo,
+                safeSignature,
                 safeHost,
                 safePort,
                 safeUser,
@@ -158,6 +177,19 @@ public record NotificationSettings(
         return emailEnabled || supplierEmailEnabled;
     }
 
+    public String resolvedSenderAddress() {
+        return sanitizeValue(firstNonBlank(emailFrom, smtpUsername, emailRecipient));
+    }
+
+    public String resolvedSenderName() {
+        String explicit = sanitizeValue(emailFromName);
+        return explicit.isBlank() ? "Prestataires Manager" : explicit;
+    }
+
+    public String resolvedReplyTo() {
+        return sanitizeValue(emailReplyTo);
+    }
+
     public boolean smtpReady() {
         if (smtpHost == null || smtpHost.isBlank()) {
             return false;
@@ -165,22 +197,60 @@ public record NotificationSettings(
         if (smtpPort < MIN_SMTP_PORT || smtpPort > MAX_SMTP_PORT) {
             return false;
         }
-        String sender = firstNonBlank(emailFrom, smtpUsername, emailRecipient);
-        return sender != null && !sender.isBlank();
+        return looksLikeEmail(resolvedSenderAddress());
     }
 
     public boolean emailReady() {
         if (!emailEnabled) {
             return false;
         }
-        if (emailRecipient == null || emailRecipient.isBlank()) {
-            return false;
-        }
-        return smtpReady();
+        return looksLikeEmail(emailRecipient) && smtpReady();
     }
 
     public boolean supplierEmailReady() {
         return supplierEmailEnabled && smtpReady();
+    }
+
+    public String applySignature(String body) {
+        String base = body == null ? "" : body.replace("\r\n", "\n").replace('\r', '\n').stripTrailing();
+        String signature = sanitizeMultiline(emailSignature, "");
+        if (signature.isBlank()) {
+            return base;
+        }
+        if (base.isBlank()) {
+            return signature;
+        }
+        return base + "\n\n" + signature;
+    }
+
+    public List<String> validationErrors() {
+        NotificationSettings draft = normalized();
+        List<String> errors = new ArrayList<>();
+        if (draft.leadDays() < MIN_LEAD_DAYS || draft.leadDays() > MAX_LEAD_DAYS) {
+            errors.add("Le nombre de jours de préavis est invalide.");
+        }
+        if (draft.reminderMinute() % 5 != 0) {
+            errors.add("Les minutes doivent être alignées sur un pas de 5.");
+        }
+        if (!draft.hasAnyEmailFlow()) {
+            return errors;
+        }
+        if (draft.smtpHost() == null || draft.smtpHost().isBlank()) {
+            errors.add("L'hôte SMTP est obligatoire.");
+        }
+        if (draft.smtpPort() < MIN_SMTP_PORT || draft.smtpPort() > MAX_SMTP_PORT) {
+            errors.add("Le port SMTP est invalide.");
+        }
+        if (!looksLikeEmail(draft.resolvedSenderAddress())) {
+            errors.add("L'adresse d'expédition est invalide ou incomplète.");
+        }
+        if (!draft.resolvedReplyTo().isBlank() && !looksLikeEmail(draft.resolvedReplyTo())) {
+            errors.add("L'adresse de réponse est invalide.");
+        }
+        if (draft.emailEnabled() && !looksLikeEmail(draft.emailRecipient())) {
+            errors.add("L'adresse e-mail du gestionnaire est obligatoire.");
+        }
+        return errors;
     }
 
     public String summary(Locale locale) {
@@ -196,23 +266,50 @@ public record NotificationSettings(
                 : (repeatEveryHours <= 0
                 ? "no repeated reminder"
                 : (repeatEveryHours == 1 ? "hourly reminder" : "reminder every " + repeatEveryHours + " h"));
-        String snoozePart = french ? snoozeMinutes + " min de report" : snoozeMinutes + " min snooze";
+        String managerPart = french
+                ? (emailEnabled ? "emails internes actifs" : "emails internes désactivés")
+                : (emailEnabled ? "manager emails on" : "manager emails off");
+        String supplierPart = french
+                ? (supplierEmailEnabled ? "emails prestataires actifs" : "emails prestataires désactivés")
+                : (supplierEmailEnabled ? "supplier emails on" : "supplier emails off");
         if (french) {
-            return "%s · rappel à %02d h %02d · %s · %s".formatted(
+            return "%s · déclenchement à %02d h %02d · %s · %s · %s".formatted(
                     leadPart,
                     reminderHour,
                     reminderMinute,
                     repeatPart,
-                    snoozePart
+                    managerPart,
+                    supplierPart
             );
         }
-        return "%s · %02d:%02d · %s · %s".formatted(
+        return "%s · %02d:%02d · %s · %s · %s".formatted(
                 leadPart,
                 reminderHour,
                 reminderMinute,
                 repeatPart,
-                snoozePart
+                managerPart,
+                supplierPart
         );
+    }
+
+    public String senderSummary() {
+        String sender = resolvedSenderAddress();
+        if (sender.isBlank()) {
+            return "Aucune adresse d'expédition";
+        }
+        String name = resolvedSenderName();
+        return name.isBlank() ? sender : name + " <" + sender + ">";
+    }
+
+    public static boolean looksLikeEmail(String value) {
+        if (value == null) {
+            return false;
+        }
+        String trimmed = value.strip();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+        return SIMPLE_EMAIL.matcher(trimmed).matches();
     }
 
     private static int clamp(int value, int min, int max) {
@@ -226,6 +323,17 @@ public record NotificationSettings(
         String trimmed = template.strip();
         if (trimmed.isEmpty()) {
             return fallback;
+        }
+        return sanitizeMultiline(trimmed, fallback);
+    }
+
+    private static String sanitizeMultiline(String value, String fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        String trimmed = value.strip();
+        if (trimmed.isEmpty()) {
+            return fallback == null ? "" : fallback;
         }
         trimmed = trimmed.replace("\r\n", "\n").replace('\r', '\n');
         String[] lines = trimmed.split("\n", -1);

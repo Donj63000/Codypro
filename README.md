@@ -53,7 +53,7 @@ L'archive générée se trouve dans `target/`.
 
 ## Notifications
 
-L'ancien module d'e-mails a été retiré. Les rappels s'affichent désormais dans le tableau de bord, et un système de notifications push est en préparation pour les prochaines versions.
+Le logiciel dispose d'un centre emailing et relances pour piloter les alertes locales, la configuration SMTP, les e-mails automatiques au gestionnaire et les relances e-mail vers les prestataires. Le moteur fonctionne localement : l'application doit rester ouverte ou réduite dans le tray pour que les relances partent réellement.
 
 ## Installation dans IntelliJ
 
