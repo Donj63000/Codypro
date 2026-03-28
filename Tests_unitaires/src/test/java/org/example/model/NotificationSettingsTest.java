@@ -36,7 +36,11 @@ class NotificationSettingsTest {
                     "secret",
                     SmtpSecurity.SSL,
                     "   ",          // should fallback to default
-                    "Chantier {{facture}}   \r\n  Prévoyez {{delai}}  "
+                    "Chantier {{facture}}   \r\n  Prévoyez {{delai}}  ",
+                    true,
+                    false,
+                    "   ",
+                    "Bonjour {{prestataire}}   \r\n"
             );
 
             NotificationSettings normalized = raw.normalized();
@@ -57,6 +61,11 @@ class NotificationSettingsTest {
             assertEquals(SmtpSecurity.SSL, normalized.smtpSecurity());
             assertEquals(defaults.subjectTemplate(), normalized.subjectTemplate());
             assertEquals("Chantier {{facture}}\n  Prévoyez {{delai}}", normalized.bodyTemplate());
+            assertTrue(normalized.supplierEmailEnabled());
+            assertFalse(normalized.supplierSendOnDueDate());
+            assertEquals(defaults.supplierSubjectTemplate(), normalized.supplierSubjectTemplate());
+            assertEquals("Bonjour {{prestataire}}", normalized.supplierBodyTemplate());
+            assertTrue(normalized.supplierEmailReady());
         }
     }
 
@@ -95,6 +104,6 @@ class NotificationSettingsTest {
 
         String summary = settings.summary(null);
 
-        assertEquals("3 jours de préavis · rappel à 09 h 00 · rappel toutes les 4 h · 30 min de report", summary);
+        assertEquals("3 jours de préavis · rappel à 09 h 00 · rappel toutes les 24 h · 30 min de report", summary);
     }
 }

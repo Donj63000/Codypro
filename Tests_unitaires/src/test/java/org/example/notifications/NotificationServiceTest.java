@@ -121,6 +121,19 @@ class NotificationServiceTest {
     }
 
     @Test
+    void sendSupplierEmailPreviewDispatchesMessageWhenReady() throws Exception {
+        RecordingNotifier notifier = new RecordingNotifier(0);
+        RecordingEmailSender sender = new RecordingEmailSender(1);
+        service = newService(baseSettings(false, false, true), notifier, sender);
+
+        service.sendSupplierEmailPreview(service.currentSettings());
+
+        assertTrue(sender.await(2, TimeUnit.SECONDS));
+        assertEquals(1, sender.messages.size());
+        assertEquals("owner@example.com", sender.messages.get(0).to());
+    }
+
+    @Test
     void tickEmitsDesktopReminderAndMarksPreavis() throws Exception {
         RecordingNotifier notifier = new RecordingNotifier(0);
         RecordingEmailSender sender = new RecordingEmailSender(0);
@@ -195,6 +208,10 @@ class NotificationServiceTest {
     }
 
     private NotificationSettings baseSettings(boolean desktopPopup, boolean emailEnabled) {
+        return baseSettings(desktopPopup, emailEnabled, false);
+    }
+
+    private NotificationSettings baseSettings(boolean desktopPopup, boolean emailEnabled, boolean supplierEmailEnabled) {
         return new NotificationSettings(
                 1,
                 0,
@@ -212,7 +229,11 @@ class NotificationServiceTest {
                 "smtp-pass",
                 SmtpSecurity.STARTTLS,
                 "Sujet {{facture}}",
-                "Corps {{prestataire}}"
+                "Corps {{prestataire}}",
+                supplierEmailEnabled,
+                true,
+                "Sujet prestataire {{facture}}",
+                "Corps prestataire {{prestataire}}"
         );
     }
 

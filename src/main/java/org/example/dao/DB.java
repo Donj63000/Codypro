@@ -7,6 +7,7 @@ import org.example.model.Rappel;
 import org.example.model.SmtpSecurity;
 import org.example.model.ServiceRow;
 import org.example.model.ServiceStatus;
+import org.example.util.TokenCrypto;
 import org.sqlite.SQLiteConfig;
 import org.sqlite.SQLiteOpenMode;
 import com.zaxxer.hikari.HikariConfig;
@@ -17,6 +18,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
+import javax.crypto.SecretKey;
 import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -161,51 +163,32 @@ public class DB implements ConnectionProvider {
             st.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS rappels(
                         id INTEGER PRIMARY KEY,
+                        job_key TEXT,
+                        type TEXT NOT NULL DEFAULT 'MANAGER_PRE',
                         facture_id INTEGER NOT NULL REFERENCES factures(id) ON DELETE CASCADE,
+                        prestataire_id INTEGER,
                         dest TEXT NOT NULL,
                         sujet TEXT NOT NULL,
                         corps TEXT NOT NULL,
                         date_envoi TEXT NOT NULL,
                         date_envoi_ts INTEGER NOT NULL,
-                        envoye INTEGER NOT NULL DEFAULT 0
+                        envoye INTEGER NOT NULL DEFAULT 0,
+                        statut TEXT NOT NULL DEFAULT 'PENDING',
+                        attempt_count INTEGER NOT NULL DEFAULT 0,
+                        last_error TEXT NOT NULL DEFAULT '',
+                        sent_at TEXT,
+                        sent_at_ts INTEGER
                     );""");
-            st.executeUpdate("""
-                    CREATE TABLE IF NOT EXISTS notification_settings(
-                        id INTEGER PRIMARY KEY CHECK(id=1),
-                        lead_days INTEGER NOT NULL DEFAULT 3,
-                        reminder_hour INTEGER NOT NULL DEFAULT 9,
-                        reminder_minute INTEGER NOT NULL DEFAULT 0,
-                        repeat_every_hours INTEGER NOT NULL DEFAULT 4,
-                        highlight_overdue INTEGER NOT NULL DEFAULT 1,
-                        desktop_popup INTEGER NOT NULL DEFAULT 1,
-                        snooze_minutes INTEGER NOT NULL DEFAULT 30,
-                        email_enabled INTEGER NOT NULL DEFAULT 0,
-                        email_recipient TEXT NOT NULL DEFAULT '',
-                        email_from TEXT NOT NULL DEFAULT '',
-                        smtp_host TEXT NOT NULL DEFAULT '',
-                        smtp_port INTEGER NOT NULL DEFAULT 587,
-                        smtp_username TEXT NOT NULL DEFAULT '',
-                        smtp_password TEXT NOT NULL DEFAULT '',
-                        smtp_security TEXT NOT NULL DEFAULT 'STARTTLS',
-                        subject_template TEXT NOT NULL DEFAULT 'Facture {{prestataire}} : échéance le {{echeance}}',
-                        body_template TEXT NOT NULL DEFAULT 'La facture {{facture}} d''un montant de {{montant}} pour {{prestataire}} arrive {{delai}}.\nStatut : {{statut}}.'
-                    );""");
-            st.executeUpdate("""
-                    INSERT INTO notification_settings (id)
-                    SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM notification_settings WHERE id=1);
-                    """);
-            st.executeUpdate("""
-                    CREATE INDEX IF NOT EXISTS idx_rappels_date ON rappels(envoye,date_envoi_ts);""");
-            st.executeUpdate("""
-                    CREATE INDEX IF NOT EXISTS idx_factures_prestataire ON factures(prestataire_id,paye);""");
-            st.executeUpdate("""
-                    CREATE INDEX IF NOT EXISTS idx_factures_echeance ON factures(echeance_ts);""");
-            st.executeUpdate("""
-                    CREATE INDEX IF NOT EXISTS idx_factures_paye_echeance ON factures(paye,echeance_ts);""");
-            st.executeUpdate("""
-                    CREATE INDEX IF NOT EXISTS idx_factures_preavis ON factures(preavis_envoye);""");
-            st.executeUpdate("""
-                    CREATE INDEX IF NOT EXISTS idx_services_date ON services(date_ts);""");
+        }
+        ensureNotificationSettingsSchema(c);
+        ensureRappelsSchema(c);
+        try (Statement st = c.createStatement()) {
+            st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_rappels_date ON rappels(envoye,date_envoi_ts)");
+            st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_factures_prestataire ON factures(prestataire_id,paye)");
+            st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_factures_echeance ON factures(echeance_ts)");
+            st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_factures_paye_echeance ON factures(paye,echeance_ts)");
+            st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_factures_preavis ON factures(preavis_envoye)");
+            st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_services_date ON services(date_ts)");
         }
         addMissingColumns(c);
     }
@@ -804,6 +787,20 @@ public class DB implements ConnectionProvider {
         }
     }
 
+    public List<Facture> facturesImpayeesPourDashboard(LocalDateTime limit) {
+        String sql = "SELECT * FROM factures WHERE paye=0 AND echeance_ts<=? ORDER BY echeance_ts, id";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, limit.toEpochSecond(ZoneOffset.UTC));
+            ResultSet rs = ps.executeQuery();
+            List<Facture> list = new ArrayList<>();
+            while (rs.next()) list.add(toFacture(rs));
+            return list;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public List<Facture> facturesNonPayeesAvecPreavis() {
         String sql = "SELECT * FROM factures WHERE paye=0 AND preavis_envoye=1";
         try (Connection conn = getConnection();
@@ -838,7 +835,8 @@ public class DB implements ConnectionProvider {
         String sql = """
                 SELECT lead_days, reminder_hour, reminder_minute, repeat_every_hours, highlight_overdue,
                        desktop_popup, snooze_minutes, email_enabled, email_recipient, email_from, smtp_host,
-                       smtp_port, smtp_username, smtp_password, smtp_security, subject_template, body_template
+                       smtp_port, smtp_username, smtp_password, smtp_security, subject_template, body_template,
+                       supplier_email_enabled, supplier_send_on_due_date, supplier_subject_template, supplier_body_template
                   FROM notification_settings
                  WHERE id=1
                 """;
@@ -860,10 +858,14 @@ public class DB implements ConnectionProvider {
                         rs.getString("smtp_host"),
                         rs.getInt("smtp_port"),
                         rs.getString("smtp_username"),
-                        rs.getString("smtp_password"),
+                        decodeNotificationSecret(rs.getString("smtp_password")),
                         SmtpSecurity.from(rs.getString("smtp_security")),
                         rs.getString("subject_template"),
-                        rs.getString("body_template")
+                        rs.getString("body_template"),
+                        rs.getInt("supplier_email_enabled") != 0,
+                        rs.getInt("supplier_send_on_due_date") != 0,
+                        rs.getString("supplier_subject_template"),
+                        rs.getString("supplier_body_template")
                 ).normalized();
             }
         } catch (SQLException e) {
@@ -879,8 +881,9 @@ public class DB implements ConnectionProvider {
                     (id, lead_days, reminder_hour, reminder_minute, repeat_every_hours,
                      highlight_overdue, desktop_popup, snooze_minutes, email_enabled, email_recipient,
                      email_from, smtp_host, smtp_port, smtp_username, smtp_password, smtp_security,
-                     subject_template, body_template)
-                VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                     subject_template, body_template, supplier_email_enabled, supplier_send_on_due_date,
+                     supplier_subject_template, supplier_body_template)
+                VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
                     lead_days=excluded.lead_days,
                     reminder_hour=excluded.reminder_hour,
@@ -898,7 +901,11 @@ public class DB implements ConnectionProvider {
                     smtp_password=excluded.smtp_password,
                     smtp_security=excluded.smtp_security,
                     subject_template=excluded.subject_template,
-                    body_template=excluded.body_template
+                    body_template=excluded.body_template,
+                    supplier_email_enabled=excluded.supplier_email_enabled,
+                    supplier_send_on_due_date=excluded.supplier_send_on_due_date,
+                    supplier_subject_template=excluded.supplier_subject_template,
+                    supplier_body_template=excluded.supplier_body_template
                 """;
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -915,10 +922,14 @@ public class DB implements ConnectionProvider {
             ps.setString(11, normalized.smtpHost());
             ps.setInt(12, normalized.smtpPort());
             ps.setString(13, normalized.smtpUsername());
-            ps.setString(14, normalized.smtpPassword());
+            ps.setString(14, encodeNotificationSecret(normalized.smtpPassword()));
             ps.setString(15, normalized.smtpSecurity().name());
             ps.setString(16, normalized.subjectTemplate());
             ps.setString(17, normalized.bodyTemplate());
+            ps.setInt(18, normalized.supplierEmailEnabled() ? 1 : 0);
+            ps.setInt(19, normalized.supplierSendOnDueDate() ? 1 : 0);
+            ps.setString(20, normalized.supplierSubjectTemplate());
+            ps.setString(21, normalized.supplierBodyTemplate());
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException("Sauvegarde des réglages de notifications impossible : " + e.getMessage(), e);
@@ -936,37 +947,73 @@ public class DB implements ConnectionProvider {
     }
 
     public void addRappel(Rappel r) {
-        String sql = "INSERT INTO rappels(facture_id,dest,sujet,corps,date_envoi,date_envoi_ts) VALUES(?,?,?,?,?,?)";
+        Rappel normalized = normalizeRappelForInsert(r);
+        String sql = """
+                INSERT INTO rappels(job_key,type,facture_id,prestataire_id,dest,sujet,corps,
+                                    date_envoi,date_envoi_ts,envoye,statut,attempt_count,last_error,sent_at,sent_at_ts)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """;
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, r.factureId());
-            ps.setString(2, r.dest());
-            ps.setString(3, r.sujet());
-            ps.setString(4, r.corps());
-            ps.setString(5, r.dateEnvoi().toString());
-            ps.setLong(6, r.dateEnvoi().toEpochSecond(ZoneOffset.UTC));
+            bindRappel(ps, normalized);
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
     }
 
+    public boolean enqueueRappelIfAbsent(Rappel r) {
+        Rappel normalized = normalizeRappelForInsert(r);
+        String sql = """
+                INSERT INTO rappels(job_key,type,facture_id,prestataire_id,dest,sujet,corps,
+                                    date_envoi,date_envoi_ts,envoye,statut,attempt_count,last_error,sent_at,sent_at_ts)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(job_key) DO NOTHING
+                """;
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            bindRappel(ps, normalized);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public Optional<Rappel> findRappelByJobKey(String jobKey) {
+        String normalizedKey = sanitizeJobKey(jobKey);
+        if (normalizedKey.isBlank()) {
+            return Optional.empty();
+        }
+        String sql = "SELECT * FROM rappels WHERE job_key=? LIMIT 1";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, normalizedKey);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return Optional.of(toRappel(rs));
+                }
+                return Optional.empty();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public List<Rappel> rappelsAEnvoyer() {
-        String sql = "SELECT * FROM rappels WHERE envoye=0 AND date_envoi_ts<=?";
+        String sql = """
+                SELECT * FROM rappels
+                 WHERE envoye=0
+                   AND statut IN ('PENDING','FAILED')
+                   AND date_envoi_ts<=?
+                 ORDER BY date_envoi_ts ASC, id ASC
+                """;
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, LocalDateTime.now().toEpochSecond(ZoneOffset.UTC));
             ResultSet rs = ps.executeQuery();
             List<Rappel> list = new ArrayList<>();
             while (rs.next()) {
-                list.add(new Rappel(
-                        rs.getInt("id"),
-                        rs.getInt("facture_id"),
-                        rs.getString("dest"),
-                        rs.getString("sujet"),
-                        rs.getString("corps"),
-                        LocalDateTime.ofEpochSecond(rs.getLong("date_envoi_ts"), 0, ZoneOffset.UTC),
-                        rs.getInt("envoye") != 0));
+                list.add(toRappel(rs));
             }
             return list;
         } catch (SQLException e) {
@@ -974,14 +1021,142 @@ public class DB implements ConnectionProvider {
         }
     }
 
-    public void markRappelEnvoye(int id) {
+    public List<Rappel> rappelsHistorique(int limit) {
+        int safeLimit = Math.max(1, limit);
+        String sql = """
+                SELECT * FROM rappels
+                 ORDER BY COALESCE(sent_at_ts, date_envoi_ts) DESC, id DESC
+                 LIMIT ?
+                """;
         try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("UPDATE rappels SET envoye=1 WHERE id=?")) {
-            ps.setInt(1, id);
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, safeLimit);
+            try (ResultSet rs = ps.executeQuery()) {
+                List<Rappel> list = new ArrayList<>();
+                while (rs.next()) {
+                    list.add(toRappel(rs));
+                }
+                return list;
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void markRappelEnvoye(int id) {
+        String sql = """
+                UPDATE rappels
+                   SET envoye=1,
+                       statut='SENT',
+                       sent_at=?,
+                       sent_at_ts=?,
+                       attempt_count=attempt_count+1,
+                       last_error=''
+                 WHERE id=?
+                """;
+        LocalDateTime now = LocalDateTime.now();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, formatDateTime(now));
+            ps.setLong(2, now.toEpochSecond(ZoneOffset.UTC));
+            ps.setInt(3, id);
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public void markRappelFailed(int id, String error, LocalDateTime nextAttemptAt) {
+        LocalDateTime scheduled = nextAttemptAt == null ? LocalDateTime.now().plusMinutes(15) : nextAttemptAt;
+        String sql = """
+                UPDATE rappels
+                   SET envoye=0,
+                       statut='FAILED',
+                       attempt_count=attempt_count+1,
+                       last_error=?,
+                       date_envoi=?,
+                       date_envoi_ts=?
+                 WHERE id=?
+                """;
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, error == null ? "" : error.strip());
+            ps.setString(2, formatDateTime(scheduled));
+            ps.setLong(3, scheduled.toEpochSecond(ZoneOffset.UTC));
+            ps.setInt(4, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void markRappelSkipped(int id, String reason) {
+        String sql = """
+                UPDATE rappels
+                   SET envoye=0,
+                       statut='SKIPPED',
+                       last_error=?
+                 WHERE id=?
+                """;
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, reason == null ? "" : reason.strip());
+            ps.setInt(2, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void bindRappel(PreparedStatement ps, Rappel r) throws SQLException {
+        ps.setString(1, r.jobKey());
+        ps.setString(2, r.type());
+        ps.setInt(3, r.factureId());
+        if (r.prestataireId() == null) {
+            ps.setNull(4, Types.INTEGER);
+        } else {
+            ps.setInt(4, r.prestataireId());
+        }
+        ps.setString(5, r.dest());
+        ps.setString(6, r.sujet());
+        ps.setString(7, r.corps());
+        ps.setString(8, formatDateTime(r.dateEnvoi()));
+        ps.setLong(9, r.dateEnvoi().toEpochSecond(ZoneOffset.UTC));
+        ps.setInt(10, r.envoye() ? 1 : 0);
+        ps.setString(11, r.statut());
+        ps.setInt(12, Math.max(r.attemptCount(), 0));
+        ps.setString(13, r.lastError() == null ? "" : r.lastError());
+        if (r.sentAt() == null) {
+            ps.setNull(14, Types.VARCHAR);
+            ps.setNull(15, Types.BIGINT);
+        } else {
+            ps.setString(14, formatDateTime(r.sentAt()));
+            ps.setLong(15, r.sentAt().toEpochSecond(ZoneOffset.UTC));
+        }
+    }
+
+    private static Rappel normalizeRappelForInsert(Rappel r) {
+        Objects.requireNonNull(r, "r");
+        String jobKey = sanitizeJobKey(r.jobKey());
+        if (jobKey.isBlank()) {
+            jobKey = "legacy-" + r.factureId() + "-" + System.nanoTime();
+        }
+        return new Rappel(
+                r.id(),
+                jobKey,
+                r.type(),
+                r.factureId(),
+                r.prestataireId(),
+                r.dest(),
+                r.sujet(),
+                r.corps(),
+                r.dateEnvoi(),
+                r.envoye(),
+                r.statut(),
+                r.attemptCount(),
+                r.lastError(),
+                r.sentAt()
+        );
     }
 
     private static Prestataire toPrestataire(ResultSet rs) throws SQLException {
@@ -991,7 +1166,7 @@ public class DB implements ConnectionProvider {
         else d = LocalDateTime.ofEpochSecond(ts, 0, ZoneOffset.UTC).toLocalDate();
         String date = d == null ? "" : DATE_FR.format(d);
         int imp = 0;
-        try { // Prefer alias 'impayes' (prompt), fallback to previous 'nb_impayes'
+        try {
             imp = rs.getInt("impayes");
         } catch (SQLException ignore1) {
             try { imp = rs.getInt("nb_impayes"); } catch (SQLException ignore2) {}
@@ -1041,6 +1216,78 @@ public class DB implements ConnectionProvider {
                 prev != 0);
     }
 
+    private static Rappel toRappel(ResultSet rs) throws SQLException {
+        return new Rappel(
+                rs.getInt("id"),
+                sanitizeJobKey(rs.getString("job_key")),
+                rs.getString("type"),
+                rs.getInt("facture_id"),
+                (Integer) rs.getObject("prestataire_id"),
+                rs.getString("dest"),
+                rs.getString("sujet"),
+                rs.getString("corps"),
+                toDateTime(rs, "date_envoi_ts", "date_envoi"),
+                rs.getInt("envoye") != 0,
+                rs.getString("statut"),
+                rs.getInt("attempt_count"),
+                rs.getString("last_error"),
+                toDateTime(rs, "sent_at_ts", "sent_at")
+        );
+    }
+
+    private static LocalDateTime toDateTime(ResultSet rs, String tsColumn, String rawColumn) throws SQLException {
+        long ts = rs.getLong(tsColumn);
+        if (!rs.wasNull()) {
+            return LocalDateTime.ofEpochSecond(ts, 0, ZoneOffset.UTC);
+        }
+        String raw = rs.getString(rawColumn);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.matches("\\d+")) {
+            long epoch = Long.parseLong(trimmed);
+            if (epoch >= 1_000_000_000_000L) {
+                epoch /= 1000L;
+            }
+            return LocalDateTime.ofEpochSecond(epoch, 0, ZoneOffset.UTC);
+        }
+        try {
+            return LocalDateTime.parse(trimmed);
+        } catch (Exception ignore) {
+            LocalDate date = parseDate(trimmed);
+            return date == null ? null : date.atStartOfDay();
+        }
+    }
+
+    private static String formatDateTime(LocalDateTime value) {
+        return value == null ? null : value.toString();
+    }
+
+    private static String sanitizeJobKey(String jobKey) {
+        return jobKey == null ? "" : jobKey.trim();
+    }
+
+    protected SecretKey notificationSecretKey() {
+        return null;
+    }
+
+    private String encodeNotificationSecret(String plain) {
+        SecretKey key = notificationSecretKey();
+        if (key == null) {
+            return plain == null ? "" : plain;
+        }
+        return TokenCrypto.encrypt(plain, key);
+    }
+
+    private String decodeNotificationSecret(String stored) {
+        SecretKey key = notificationSecretKey();
+        if (key == null) {
+            return stored == null ? "" : stored;
+        }
+        return TokenCrypto.decrypt(stored, key);
+    }
+
     private static void bindPrestataire(PreparedStatement ps, Prestataire p) throws SQLException {
         ps.setString(1, prestaNom(p));
         ps.setString(2, prestaSoc(p));
@@ -1078,9 +1325,9 @@ public class DB implements ConnectionProvider {
         ensureColumn(c, "prestataires", "facturation", "TEXT");
         ensureColumn(c, "prestataires", "service_notes", "TEXT");
         ensureTs(c, "factures", "date_paiement_ts", "date_paiement");
-        ensureTs(c, "rappels", "date_envoi_ts", "date_envoi");
         ensureMoney(c);
         ensureNotificationSettingsSchema(c);
+        ensureRappelsSchema(c);
         try (Statement st = c.createStatement()) {
             st.executeUpdate("UPDATE services SET status='EN_ATTENTE' WHERE status IS NULL OR TRIM(status)=''");
         }
@@ -1132,7 +1379,7 @@ public class DB implements ConnectionProvider {
                         lead_days INTEGER NOT NULL DEFAULT 3,
                         reminder_hour INTEGER NOT NULL DEFAULT 9,
                         reminder_minute INTEGER NOT NULL DEFAULT 0,
-                        repeat_every_hours INTEGER NOT NULL DEFAULT 4,
+                        repeat_every_hours INTEGER NOT NULL DEFAULT 24,
                         highlight_overdue INTEGER NOT NULL DEFAULT 1,
                         desktop_popup INTEGER NOT NULL DEFAULT 1,
                         snooze_minutes INTEGER NOT NULL DEFAULT 30,
@@ -1144,8 +1391,12 @@ public class DB implements ConnectionProvider {
                         smtp_username TEXT NOT NULL DEFAULT '',
                         smtp_password TEXT NOT NULL DEFAULT '',
                         smtp_security TEXT NOT NULL DEFAULT 'STARTTLS',
-                        subject_template TEXT NOT NULL DEFAULT 'Facture {{prestataire}} : échéance le {{echeance}}',
-                        body_template TEXT NOT NULL DEFAULT 'La facture {{facture}} d''un montant de {{montant}} pour {{prestataire}} arrive {{delai}}.\nStatut : {{statut}}.'
+                        subject_template TEXT NOT NULL DEFAULT 'Alerte échéance - {{prestataire}} - {{facture}}',
+                        body_template TEXT NOT NULL DEFAULT 'Le prestataire {{prestataire}} a une facture {{facture}} de {{montant}} qui arrive {{delai}}.\nÉchéance : {{echeance}}.\nStatut : {{statut}}.',
+                        supplier_email_enabled INTEGER NOT NULL DEFAULT 0,
+                        supplier_send_on_due_date INTEGER NOT NULL DEFAULT 1,
+                        supplier_subject_template TEXT NOT NULL DEFAULT 'Rappel de paiement - {{facture}} - échéance {{echeance}}',
+                        supplier_body_template TEXT NOT NULL DEFAULT 'Bonjour {{prestataire}},\n\nNous vous rappelons que la facture {{facture}} d''un montant de {{montant}} arrive {{delai}}.\nDate d''échéance : {{echeance}}.\n\nMerci de procéder au règlement dans les délais.'
                     );
                     """);
             st.executeUpdate("""
@@ -1156,7 +1407,7 @@ public class DB implements ConnectionProvider {
         ensureColumn(c, "notification_settings", "lead_days", "INTEGER NOT NULL DEFAULT 3");
         ensureColumn(c, "notification_settings", "reminder_hour", "INTEGER NOT NULL DEFAULT 9");
         ensureColumn(c, "notification_settings", "reminder_minute", "INTEGER NOT NULL DEFAULT 0");
-        ensureColumn(c, "notification_settings", "repeat_every_hours", "INTEGER NOT NULL DEFAULT 4");
+        ensureColumn(c, "notification_settings", "repeat_every_hours", "INTEGER NOT NULL DEFAULT 24");
         ensureColumn(c, "notification_settings", "highlight_overdue", "INTEGER NOT NULL DEFAULT 1");
         ensureColumn(c, "notification_settings", "desktop_popup", "INTEGER NOT NULL DEFAULT 1");
         ensureColumn(c, "notification_settings", "snooze_minutes", "INTEGER NOT NULL DEFAULT 30");
@@ -1168,8 +1419,56 @@ public class DB implements ConnectionProvider {
         ensureColumn(c, "notification_settings", "smtp_username", "TEXT NOT NULL DEFAULT ''");
         ensureColumn(c, "notification_settings", "smtp_password", "TEXT NOT NULL DEFAULT ''");
         ensureColumn(c, "notification_settings", "smtp_security", "TEXT NOT NULL DEFAULT 'STARTTLS'");
-        ensureColumn(c, "notification_settings", "subject_template", "TEXT NOT NULL DEFAULT 'Facture {{prestataire}} : échéance le {{echeance}}'");
-        ensureColumn(c, "notification_settings", "body_template", "TEXT NOT NULL DEFAULT 'La facture {{facture}} d''un montant de {{montant}} pour {{prestataire}} arrive {{delai}}.\nStatut : {{statut}}.'");
+        ensureColumn(c, "notification_settings", "subject_template", "TEXT NOT NULL DEFAULT 'Alerte échéance - {{prestataire}} - {{facture}}'");
+        ensureColumn(c, "notification_settings", "body_template", "TEXT NOT NULL DEFAULT 'Le prestataire {{prestataire}} a une facture {{facture}} de {{montant}} qui arrive {{delai}}.\nÉchéance : {{echeance}}.\nStatut : {{statut}}.'");
+        ensureColumn(c, "notification_settings", "supplier_email_enabled", "INTEGER NOT NULL DEFAULT 0");
+        ensureColumn(c, "notification_settings", "supplier_send_on_due_date", "INTEGER NOT NULL DEFAULT 1");
+        ensureColumn(c, "notification_settings", "supplier_subject_template", "TEXT NOT NULL DEFAULT 'Rappel de paiement - {{facture}} - échéance {{echeance}}'");
+        ensureColumn(c, "notification_settings", "supplier_body_template", "TEXT NOT NULL DEFAULT 'Bonjour {{prestataire}},\n\nNous vous rappelons que la facture {{facture}} d''un montant de {{montant}} arrive {{delai}}.\nDate d''échéance : {{echeance}}.\n\nMerci de procéder au règlement dans les délais.'");
+    }
+
+    static void ensureRappelsSchema(Connection c) throws SQLException {
+        try (Statement st = c.createStatement()) {
+            st.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS rappels(
+                        id INTEGER PRIMARY KEY,
+                        job_key TEXT,
+                        type TEXT NOT NULL DEFAULT 'MANAGER_PRE',
+                        facture_id INTEGER NOT NULL REFERENCES factures(id) ON DELETE CASCADE,
+                        prestataire_id INTEGER,
+                        dest TEXT NOT NULL,
+                        sujet TEXT NOT NULL,
+                        corps TEXT NOT NULL,
+                        date_envoi TEXT NOT NULL,
+                        date_envoi_ts INTEGER NOT NULL,
+                        envoye INTEGER NOT NULL DEFAULT 0,
+                        statut TEXT NOT NULL DEFAULT 'PENDING',
+                        attempt_count INTEGER NOT NULL DEFAULT 0,
+                        last_error TEXT NOT NULL DEFAULT '',
+                        sent_at TEXT,
+                        sent_at_ts INTEGER
+                    );
+                    """);
+        }
+        ensureColumn(c, "rappels", "job_key", "TEXT");
+        ensureColumn(c, "rappels", "type", "TEXT NOT NULL DEFAULT 'MANAGER_PRE'");
+        ensureColumn(c, "rappels", "prestataire_id", "INTEGER");
+        ensureColumn(c, "rappels", "statut", "TEXT NOT NULL DEFAULT 'PENDING'");
+        ensureColumn(c, "rappels", "attempt_count", "INTEGER NOT NULL DEFAULT 0");
+        ensureColumn(c, "rappels", "last_error", "TEXT NOT NULL DEFAULT ''");
+        ensureColumn(c, "rappels", "sent_at", "TEXT");
+        ensureTs(c, "rappels", "date_envoi_ts", "date_envoi");
+        ensureTs(c, "rappels", "sent_at_ts", "sent_at");
+        try (Statement st = c.createStatement()) {
+            st.executeUpdate("UPDATE rappels SET job_key='legacy-' || id WHERE job_key IS NULL OR TRIM(job_key)=''");
+            st.executeUpdate("UPDATE rappels SET type='MANAGER_PRE' WHERE type IS NULL OR TRIM(type)=''");
+            st.executeUpdate("UPDATE rappels SET statut=CASE WHEN envoye=1 THEN 'SENT' ELSE 'PENDING' END WHERE statut IS NULL OR TRIM(statut)=''");
+            st.executeUpdate("UPDATE rappels SET attempt_count=0 WHERE attempt_count IS NULL");
+            st.executeUpdate("UPDATE rappels SET last_error='' WHERE last_error IS NULL");
+            st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_rappels_status_date ON rappels(statut, envoye, date_envoi_ts)");
+            st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_rappels_facture ON rappels(facture_id, date_envoi_ts)");
+            st.executeUpdate("CREATE UNIQUE INDEX IF NOT EXISTS idx_rappels_job_key ON rappels(job_key)");
+        }
     }
 
     public void ensureIndexes(Connection c) throws SQLException {
@@ -1177,6 +1476,9 @@ public class DB implements ConnectionProvider {
             st.execute("CREATE INDEX IF NOT EXISTS idx_prestataires_nom ON prestataires(nom)");
             st.execute("CREATE INDEX IF NOT EXISTS idx_prestataires_mail ON prestataires(email)");
             st.execute("CREATE INDEX IF NOT EXISTS idx_prestataires_tel ON prestataires(telephone)");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_rappels_status_date ON rappels(statut, envoye, date_envoi_ts)");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_rappels_facture ON rappels(facture_id, date_envoi_ts)");
+            st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_rappels_job_key ON rappels(job_key)");
         }
     }
 }

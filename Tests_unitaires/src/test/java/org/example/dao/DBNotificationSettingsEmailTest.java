@@ -51,7 +51,11 @@ final class DBNotificationSettingsEmailTest {
                 "smtp-pass",
                 SmtpSecurity.SSL,
                 "Sujet test",
-                "Corps test"
+                "Corps test",
+                true,
+                false,
+                "Sujet prestataire",
+                "Corps prestataire"
         );
 
         db.saveNotificationSettings(updated);

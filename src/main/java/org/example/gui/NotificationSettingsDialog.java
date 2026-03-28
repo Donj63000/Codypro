@@ -3,24 +3,38 @@ package org.example.gui;
 import javafx.beans.value.ChangeListener;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
-import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.*;
-import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.Label;
+import javafx.scene.control.PasswordField;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Separator;
+import javafx.scene.control.Spinner;
+import javafx.scene.control.SpinnerValueFactory;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
 import javafx.util.StringConverter;
 import org.example.AppServices;
 import org.example.model.NotificationSettings;
+import org.example.model.Rappel;
 import org.example.model.SmtpSecurity;
 import org.example.util.NotificationTemplateEngine;
 
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
 
 public final class NotificationSettingsDialog extends Dialog<NotificationSettings> {
@@ -32,68 +46,67 @@ public final class NotificationSettingsDialog extends Dialog<NotificationSetting
     private final Spinner<Integer> snoozeMinutesSpinner;
     private final CheckBox highlightOverdueCheck;
     private final CheckBox desktopPopupCheck;
-    private final CheckBox emailEnabledCheck;
-    private final TextField emailRecipientField;
+
+    private final CheckBox managerEmailEnabledCheck;
+    private final TextField managerRecipientField;
+
     private final TextField emailFromField;
     private final TextField smtpHostField;
     private final Spinner<Integer> smtpPortSpinner;
     private final TextField smtpUserField;
     private final PasswordField smtpPasswordField;
     private final ComboBox<SmtpSecurity> smtpSecurityBox;
-    private final Button emailTestButton;
-    private final TextField subjectField;
-    private final TextArea bodyArea;
+
+    private final CheckBox supplierEmailEnabledCheck;
+    private final CheckBox supplierSendOnDueDateCheck;
+
+    private final TextField managerSubjectField;
+    private final TextArea managerBodyArea;
+    private final TextField supplierSubjectField;
+    private final TextArea supplierBodyArea;
+
+    private final Button managerTestButton = new Button("Tester l'email gestionnaire");
+    private final Button supplierTestButton = new Button("Tester l'email prestataire");
+    private final Button desktopPreviewButton = new Button("Tester la notification bureau");
+
     private final Label summaryLabel = new Label();
-    private final Label previewTitle = new Label();
-    private final Label previewBody = new Label();
+    private final Label managerPreviewTitle = new Label();
+    private final Label managerPreviewBody = new Label();
+    private final Label supplierPreviewTitle = new Label();
+    private final Label supplierPreviewBody = new Label();
+    private final TextArea historyArea = new TextArea();
 
     public NotificationSettingsDialog(Window owner, NotificationSettings baseSettings) {
-        NotificationSettings settings = baseSettings == null ? NotificationSettings.defaults() : baseSettings;
+        NotificationSettings settings = baseSettings == null ? NotificationSettings.defaults() : baseSettings.normalized();
         if (owner != null) {
             initOwner(owner);
         }
-        setTitle("Configurer les notifications");
 
+        setTitle("Centre de relances");
         ButtonType cancelType = ButtonType.CANCEL;
         ButtonType saveType = new ButtonType("Enregistrer", ButtonBar.ButtonData.OK_DONE);
         getDialogPane().getButtonTypes().addAll(cancelType, saveType);
-        getDialogPane().setPrefSize(720, 640);
-        getDialogPane().setMinWidth(680);
-        getDialogPane().setMinHeight(600);
-        getDialogPane().setPadding(new Insets(16, 18, 16, 18));
+        getDialogPane().setPrefSize(860, 780);
+        getDialogPane().setMinWidth(760);
         getDialogPane().getStyleClass().add("notification-settings-dialog");
-
-        Label header = new Label("Notifications personnalisées");
-        header.getStyleClass().add("dialog-title");
-        header.setWrapText(true);
-
-        summaryLabel.getStyleClass().add("dialog-subtitle");
-        summaryLabel.setWrapText(true);
 
         leadDaysSpinner = integerSpinner(1, 60, settings.leadDays(), 1);
         reminderHourSpinner = integerSpinner(0, 23, settings.reminderHour(), 1);
         reminderMinuteSpinner = integerSpinner(0, 55, settings.reminderMinute(), 5);
         repeatHoursSpinner = integerSpinner(0, 72, settings.repeatEveryHours(), 1);
         snoozeMinutesSpinner = integerSpinner(5, 720, settings.snoozeMinutes(), 5);
-        leadDaysSpinner.setTooltip(new Tooltip("Nombre de jours avant l'échéance pour déclencher le premier rappel."));
-        reminderHourSpinner.setTooltip(new Tooltip("Heure d'envoi du rappel initial (heure locale)."));
-        reminderMinuteSpinner.setTooltip(new Tooltip("Minutes précises d'envoi pour le rappel initial."));
-        repeatHoursSpinner.setTooltip(new Tooltip("Cadence de répétition automatique après le premier rappel."));
-        snoozeMinutesSpinner.setTooltip(new Tooltip("Durée du report lorsqu'un rappel est remis à plus tard."));
 
         highlightOverdueCheck = new CheckBox("Accentuer visuellement les factures en retard");
         highlightOverdueCheck.setSelected(settings.highlightOverdue());
-        highlightOverdueCheck.setTooltip(new Tooltip("Ajoute un marquage de couleur sur les factures dont l'échéance est dépassée."));
 
-        desktopPopupCheck = new CheckBox("Afficher des notifications système (Windows/macOS/Linux)");
+        desktopPopupCheck = new CheckBox("Afficher une notification système");
         desktopPopupCheck.setSelected(settings.desktopPopup());
 
-        emailEnabledCheck = new CheckBox("Activer l'envoi email");
-        emailEnabledCheck.setSelected(settings.emailEnabled());
-        emailEnabledCheck.setTooltip(new Tooltip("Envoie un email lors des rappels d'echeance."));
+        managerEmailEnabledCheck = new CheckBox("Envoyer un email au gestionnaire");
+        managerEmailEnabledCheck.setSelected(settings.emailEnabled());
 
-        emailRecipientField = new TextField(settings.emailRecipient());
-        emailRecipientField.setPromptText("vous@exemple.com");
+        managerRecipientField = new TextField(settings.emailRecipient());
+        managerRecipientField.setPromptText("gestionnaire@exemple.com");
 
         emailFromField = new TextField(settings.emailFrom());
         emailFromField.setPromptText("expediteur@exemple.com");
@@ -103,7 +116,6 @@ public final class NotificationSettingsDialog extends Dialog<NotificationSetting
 
         smtpPortSpinner = integerSpinner(1, 65535, settings.smtpPort(), 1);
         smtpPortSpinner.setEditable(true);
-        smtpPortSpinner.setPrefWidth(120);
 
         smtpUserField = new TextField(settings.smtpUsername());
         smtpUserField.setPromptText("identifiant SMTP");
@@ -128,237 +140,298 @@ public final class NotificationSettingsDialog extends Dialog<NotificationSetting
         });
         smtpSecurityBox.setMaxWidth(Double.MAX_VALUE);
 
-        emailTestButton = new Button("Tester l'envoi email");
-        emailTestButton.getStyleClass().add("accent");
-        emailTestButton.setMaxWidth(Double.MAX_VALUE);
-        desktopPopupCheck.setTooltip(new Tooltip("Affiche une alerte native même si l'application est masquée."));
+        supplierEmailEnabledCheck = new CheckBox("Envoyer des emails aux prestataires");
+        supplierEmailEnabledCheck.setSelected(settings.supplierEmailEnabled());
 
-        subjectField = new TextField(settings.subjectTemplate());
-        subjectField.setPrefColumnCount(36);
-        subjectField.setPromptText("Facture {{facture}} – échéance le {{echeance}}");
+        supplierSendOnDueDateCheck = new CheckBox("Envoyer aussi un rappel le jour de l'échéance");
+        supplierSendOnDueDateCheck.setSelected(settings.supplierSendOnDueDate());
 
-        bodyArea = new TextArea(settings.bodyTemplate());
-        bodyArea.setWrapText(true);
-        bodyArea.setPrefRowCount(5);
-        bodyArea.setPromptText("Bonjour {{prestataire}}, votre facture {{facture}} arrive à échéance le {{echeance}}...");
+        managerSubjectField = new TextField(settings.subjectTemplate());
+        managerSubjectField.setPromptText("Alerte échéance - {{prestataire}} - {{facture}}");
 
-        GridPane schedulingGrid = new GridPane();
-        schedulingGrid.setHgap(12);
-        schedulingGrid.setVgap(12);
-        ColumnConstraints labelCol = new ColumnConstraints();
-        labelCol.setPercentWidth(56);
-        ColumnConstraints inputCol = new ColumnConstraints();
-        inputCol.setPercentWidth(44);
-        inputCol.setHgrow(Priority.ALWAYS);
-        schedulingGrid.getColumnConstraints().setAll(labelCol, inputCol);
-        schedulingGrid.add(label("Préavis (jours)"), 0, 0);
-        schedulingGrid.add(leadDaysSpinner, 1, 0);
-        schedulingGrid.add(label("Heure d'alerte"), 0, 1);
-        schedulingGrid.add(timeBox(reminderHourSpinner, reminderMinuteSpinner), 1, 1);
-        schedulingGrid.add(label("Rappel auto (heures)"), 0, 2);
-        schedulingGrid.add(repeatHoursSpinner, 1, 2);
-        schedulingGrid.add(label("Report (minutes)"), 0, 3);
-        schedulingGrid.add(snoozeMinutesSpinner, 1, 3);
-        schedulingGrid.getStyleClass().add("form-grid");
+        managerBodyArea = new TextArea(settings.bodyTemplate());
+        managerBodyArea.setWrapText(true);
+        managerBodyArea.setPrefRowCount(6);
 
-        VBox optionsBox = new VBox(8, highlightOverdueCheck, desktopPopupCheck);
-        optionsBox.setPadding(new Insets(4, 0, 0, 0));
+        supplierSubjectField = new TextField(settings.supplierSubjectTemplate());
+        supplierSubjectField.setPromptText("Rappel de paiement - {{facture}} - échéance {{echeance}}");
 
-        GridPane emailGrid = new GridPane();
-        emailGrid.setHgap(12);
-        emailGrid.setVgap(12);
-        ColumnConstraints emailLabelCol = new ColumnConstraints();
-        emailLabelCol.setPercentWidth(42);
-        ColumnConstraints emailInputCol = new ColumnConstraints();
-        emailInputCol.setPercentWidth(58);
-        emailInputCol.setHgrow(Priority.ALWAYS);
-        emailGrid.getColumnConstraints().setAll(emailLabelCol, emailInputCol);
-        int emailRow = 0;
-        emailGrid.add(label("Destinataire"), 0, emailRow);
-        emailGrid.add(emailRecipientField, 1, emailRow++);
-        emailGrid.add(label("Expediteur"), 0, emailRow);
-        emailGrid.add(emailFromField, 1, emailRow++);
-        emailGrid.add(label("SMTP hote"), 0, emailRow);
-        emailGrid.add(smtpHostField, 1, emailRow++);
-        emailGrid.add(label("Port SMTP"), 0, emailRow);
-        emailGrid.add(smtpPortSpinner, 1, emailRow++);
-        emailGrid.add(label("Securite"), 0, emailRow);
-        emailGrid.add(smtpSecurityBox, 1, emailRow++);
-        emailGrid.add(label("Utilisateur"), 0, emailRow);
-        emailGrid.add(smtpUserField, 1, emailRow++);
-        emailGrid.add(label("Mot de passe"), 0, emailRow);
-        emailGrid.add(smtpPasswordField, 1, emailRow++);
-        emailGrid.getStyleClass().add("form-grid");
+        supplierBodyArea = new TextArea(settings.supplierBodyTemplate());
+        supplierBodyArea.setWrapText(true);
+        supplierBodyArea.setPrefRowCount(7);
 
-        previewTitle.getStyleClass().setAll("notification-preview-title");
-        previewTitle.setWrapText(true);
-        previewBody.getStyleClass().setAll("notification-preview-body");
-        previewBody.setWrapText(true);
-        VBox previewCard = new VBox(8, previewTitle, previewBody);
-        previewCard.getStyleClass().setAll("notification-preview-card");
-        previewCard.setFillWidth(true);
+        summaryLabel.getStyleClass().add("dialog-subtitle");
+        summaryLabel.setWrapText(true);
 
-        Label schedulingHint = hintLabel("Choisissez précisément quand prévenir les prestataires afin qu'ils aient le temps de régulariser leur situation.");
-        VBox schedulingSectionContent = new VBox(14, schedulingGrid, schedulingHint);
-        schedulingSectionContent.setFillWidth(true);
+        managerPreviewTitle.getStyleClass().add("notification-preview-title");
+        managerPreviewTitle.setWrapText(true);
+        managerPreviewBody.getStyleClass().add("notification-preview-body");
+        managerPreviewBody.setWrapText(true);
+        supplierPreviewTitle.getStyleClass().add("notification-preview-title");
+        supplierPreviewTitle.setWrapText(true);
+        supplierPreviewBody.getStyleClass().add("notification-preview-body");
+        supplierPreviewBody.setWrapText(true);
 
-        Label highlightHint = hintLabel("Cette option colore fortement les factures échues pour attirer l'attention lors des revues quotidiennes.");
-        Label desktopHint = hintLabel("Fait apparaître un toast natif même si l'application est réduite ou masquée.");
-        VBox optionsSectionContent = new VBox(10, optionsBox, highlightHint, desktopHint);
-        optionsSectionContent.setFillWidth(true);
+        historyArea.setEditable(false);
+        historyArea.setWrapText(true);
+        historyArea.setPrefRowCount(8);
+        historyArea.setFocusTraversable(false);
 
-        Label emailHint = hintLabel("Configurez le serveur SMTP pour recevoir les alertes sur votre adresse.");
-        VBox emailSectionContent = new VBox(12, emailEnabledCheck, emailGrid, emailHint, emailTestButton);
-        emailSectionContent.setFillWidth(true);
+        managerTestButton.getStyleClass().add("accent");
+        supplierTestButton.getStyleClass().add("accent");
+        desktopPreviewButton.getStyleClass().add("outline");
 
-        FlowPane placeholderTags = new FlowPane(8, 8);
-        placeholderTags.getStyleClass().add("placeholder-tags");
-        String[] placeholders = {"{{prestataire}}", "{{facture}}", "{{echeance}}", "{{montant}}", "{{delai}}", "{{delai_jours}}", "{{statut}}"};
-        for (String token : placeholders) {
-            Label pill = new Label(token);
-            pill.getStyleClass().add("placeholder-pill");
-            placeholderTags.getChildren().add(pill);
-        }
+        managerTestButton.setMaxWidth(Double.MAX_VALUE);
+        supplierTestButton.setMaxWidth(Double.MAX_VALUE);
+        desktopPreviewButton.setMaxWidth(Double.MAX_VALUE);
 
-        Label placeholdersTitle = new Label("Variables dynamiques");
-        placeholdersTitle.getStyleClass().add("dialog-section-subtitle");
-        Label templateHint = hintLabel("Combinez les variables avec du texte libre pour conserver un ton cohérent sur toutes les relances.");
-
-        Label subjectLabel = label("Titre du message");
-        Label subjectHelper = hintLabel("S'affiche comme objet d'e-mail ou entête de notification.");
-        Label bodyLabel = label("Corps du message");
-        Label bodyHelper = hintLabel("Décrivez clairement ce que le destinataire doit faire et dans quels délais.");
-
-        Label previewBadge = new Label("APERÇU EN DIRECT");
-        previewBadge.getStyleClass().add("dialog-pill");
-        Label previewHint = hintLabel("Le rendu ci-dessous s'actualise automatiquement selon les paramètres et les modèles saisis.");
-        Button previewButton = new Button("Tester la notification");
-        previewButton.getStyleClass().add("accent");
-        previewButton.setMaxWidth(Double.MAX_VALUE);
-        previewButton.setDisable(!AppServices.hasNotificationService() || !settings.desktopPopup());
-        boolean hasTray = AppServices.trayManagerOptional().isPresent();
-        if (!AppServices.hasNotificationService()) {
-            previewButton.setTooltip(new Tooltip("Notifications indisponibles : aucune alerte ne peut être montrée."));
-        } else if (hasTray) {
-            previewButton.setTooltip(new Tooltip("Affiche immédiatement une notification système avec les réglages courants."));
-        } else {
-            previewButton.setTooltip(new Tooltip("Affiche un aperçu dans l'application lorsque les notifications système ne sont pas supportées."));
-        }
-        previewButton.setOnAction(e -> AppServices.notificationServiceOptional().ifPresent(service -> service.sendPreview(draftSettings())));
-        desktopPopupCheck.selectedProperty().addListener((obs, oldVal, newVal) ->
-                previewButton.setDisable(!newVal || !AppServices.hasNotificationService()));
-
-        if (!AppServices.hasNotificationService()) {
-            emailTestButton.setTooltip(new Tooltip("Email indisponible : service de notification non initialise."));
-        } else {
-            emailTestButton.setTooltip(new Tooltip("Envoie un email de test avec les reglages courants."));
-        }
-        emailTestButton.setOnAction(e -> {
-            String error = validateEmailSettings();
+        managerTestButton.setOnAction(event -> {
+            String error = validateSettings();
             if (error != null) {
-                Window dialogOwner = getDialogPane().getScene() == null ? null : getDialogPane().getScene().getWindow();
-                Dialogs.error(dialogOwner, error);
+                Dialogs.error(ownerWindow(), error);
                 return;
             }
             AppServices.notificationServiceOptional().ifPresent(service -> service.sendEmailPreview(draftSettings()));
         });
 
-        VBox previewBox = new VBox(10, previewBadge, previewHint, previewCard, previewButton);
-        previewBox.setFillWidth(true);
+        supplierTestButton.setOnAction(event -> {
+            String error = validateSettings();
+            if (error != null) {
+                Dialogs.error(ownerWindow(), error);
+                return;
+            }
+            AppServices.notificationServiceOptional().ifPresent(service -> service.sendSupplierEmailPreview(draftSettings()));
+        });
 
-        VBox templateFields = new VBox(10,
-                subjectLabel,
-                subjectField,
-                subjectHelper,
-                bodyLabel,
-                bodyArea,
-                bodyHelper
+        desktopPreviewButton.setOnAction(event ->
+                AppServices.notificationServiceOptional().ifPresent(service -> service.sendPreview(draftSettings())));
+
+        VBox root = new VBox(16,
+                buildHeader(),
+                buildPlanningSection(),
+                buildSmtpSection(),
+                buildManagerSection(),
+                buildSupplierSection(),
+                buildHistorySection(),
+                buildPlaceholdersSection()
         );
-        templateFields.setFillWidth(true);
+        root.setPadding(new Insets(16));
+        root.setFillWidth(true);
 
-        VBox templateSectionContent = new VBox(14,
-                templateFields,
-                placeholdersTitle,
-                placeholderTags,
-                templateHint,
-                previewBox
-        );
-        templateSectionContent.setFillWidth(true);
-
-        VBox schedulingSection = section("Planification des rappels", "Définissez le timing des notifications automatiques.", schedulingSectionContent);
-        VBox optionsSection = section("Visibilité côté application", "Mettez en avant les situations urgentes pour votre équipe.", optionsSectionContent);
-        VBox emailSection = section("Envoi email", "Parametrez l'envoi automatique des emails d'alerte.", emailSectionContent);
-        VBox templateSection = section("Contenu du message", "Personnalisez le ton et les variables partagées avec les prestataires.", templateSectionContent);
-
-        VBox leftColumn = new VBox(16, schedulingSection, optionsSection, emailSection);
-        leftColumn.getStyleClass().add("dialog-column");
-        VBox rightColumn = new VBox(templateSection);
-        rightColumn.getStyleClass().add("dialog-column");
-        VBox.setVgrow(templateSection, Priority.ALWAYS);
-        leftColumn.setFillWidth(true);
-        rightColumn.setFillWidth(true);
-        leftColumn.setMaxWidth(Double.MAX_VALUE);
-        rightColumn.setMaxWidth(Double.MAX_VALUE);
-
-        FlowPane columns = new FlowPane(Orientation.HORIZONTAL, leftColumn, rightColumn);
-        columns.setAlignment(Pos.TOP_LEFT);
-        columns.setHgap(18);
-        columns.setVgap(18);
-        columns.setPrefWrapLength(620);
-        columns.getStyleClass().add("dialog-flow");
-        columns.setMaxWidth(Double.MAX_VALUE);
-
-        VBox headerBox = new VBox(6, header, summaryLabel);
-        headerBox.setFillWidth(true);
-
-        ScrollPane scroller = new ScrollPane(columns);
-        scroller.setFitToWidth(true);
-        scroller.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scroller.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        scroller.getStyleClass().add("dialog-scroll-pane");
-
-        VBox content = new VBox(20, headerBox, new Separator(), scroller);
-        content.setFillWidth(true);
-        getDialogPane().setContent(content);
+        ScrollPane scroll = new ScrollPane(root);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        getDialogPane().setContent(scroll);
 
         Button saveButton = (Button) getDialogPane().lookupButton(saveType);
         saveButton.addEventFilter(ActionEvent.ACTION, event -> {
-            String error = validateEmailSettings();
+            String error = validateSettings();
             if (error != null) {
-                Window dialogOwner = getDialogPane().getScene() == null ? null : getDialogPane().getScene().getWindow();
-                Dialogs.error(dialogOwner, error);
+                Dialogs.error(ownerWindow(), error);
                 event.consume();
             }
         });
 
-        ChangeListener<Object> summaryUpdater = (obs, o, n) -> updateSummary();
-        leadDaysSpinner.valueProperty().addListener(summaryUpdater);
-        reminderHourSpinner.valueProperty().addListener(summaryUpdater);
-        reminderMinuteSpinner.valueProperty().addListener(summaryUpdater);
-        repeatHoursSpinner.valueProperty().addListener(summaryUpdater);
-        snoozeMinutesSpinner.valueProperty().addListener(summaryUpdater);
-        highlightOverdueCheck.selectedProperty().addListener(summaryUpdater);
+        ChangeListener<Object> updater = (obs, oldValue, newValue) -> {
+            updateSummary();
+            updateUiState();
+            updatePreviews();
+        };
 
-        ChangeListener<Object> previewUpdater = (obs, o, n) -> updatePreview();
-        subjectField.textProperty().addListener(previewUpdater);
-        bodyArea.textProperty().addListener(previewUpdater);
-        leadDaysSpinner.valueProperty().addListener(previewUpdater);
-
-        ChangeListener<Object> emailUpdater = (obs, o, n) -> updateEmailUi();
-        emailEnabledCheck.selectedProperty().addListener(emailUpdater);
-        emailRecipientField.textProperty().addListener(emailUpdater);
-        emailFromField.textProperty().addListener(emailUpdater);
-        smtpHostField.textProperty().addListener(emailUpdater);
-        smtpPortSpinner.valueProperty().addListener(emailUpdater);
-        smtpUserField.textProperty().addListener(emailUpdater);
-        smtpPasswordField.textProperty().addListener(emailUpdater);
-        smtpSecurityBox.valueProperty().addListener(emailUpdater);
+        leadDaysSpinner.valueProperty().addListener(updater);
+        reminderHourSpinner.valueProperty().addListener(updater);
+        reminderMinuteSpinner.valueProperty().addListener(updater);
+        repeatHoursSpinner.valueProperty().addListener(updater);
+        snoozeMinutesSpinner.valueProperty().addListener(updater);
+        highlightOverdueCheck.selectedProperty().addListener(updater);
+        desktopPopupCheck.selectedProperty().addListener(updater);
+        managerEmailEnabledCheck.selectedProperty().addListener(updater);
+        managerRecipientField.textProperty().addListener(updater);
+        emailFromField.textProperty().addListener(updater);
+        smtpHostField.textProperty().addListener(updater);
+        smtpPortSpinner.valueProperty().addListener(updater);
+        smtpUserField.textProperty().addListener(updater);
+        smtpPasswordField.textProperty().addListener(updater);
+        smtpSecurityBox.valueProperty().addListener(updater);
+        supplierEmailEnabledCheck.selectedProperty().addListener(updater);
+        supplierSendOnDueDateCheck.selectedProperty().addListener(updater);
+        managerSubjectField.textProperty().addListener(updater);
+        managerBodyArea.textProperty().addListener(updater);
+        supplierSubjectField.textProperty().addListener(updater);
+        supplierBodyArea.textProperty().addListener(updater);
 
         updateSummary();
-        updatePreview();
-        updateEmailUi();
+        updateUiState();
+        updatePreviews();
+        refreshHistory();
 
-        setResultConverter(bt -> bt == saveType ? draftSettings().normalized() : null);
+        setResultConverter(buttonType -> buttonType == saveType ? draftSettings().normalized() : null);
+    }
+
+    private Node buildHeader() {
+        Label title = new Label("Relances automatiques");
+        title.getStyleClass().add("dialog-title");
+
+        Label subtitle = new Label("Configure les alertes bureau, les emails internes et les relances envoyées aux prestataires.");
+        subtitle.getStyleClass().add("form-hint");
+        subtitle.setWrapText(true);
+
+        VBox header = new VBox(6, title, subtitle, summaryLabel);
+        header.setFillWidth(true);
+        return header;
+    }
+
+    private Node buildPlanningSection() {
+        GridPane grid = grid();
+        int row = 0;
+        grid.add(label("Préavis (jours)"), 0, row);
+        grid.add(leadDaysSpinner, 1, row++);
+        grid.add(label("Heure de lancement"), 0, row);
+        grid.add(timeBox(reminderHourSpinner, reminderMinuteSpinner), 1, row++);
+        grid.add(label("Relance auto (heures)"), 0, row);
+        grid.add(repeatHoursSpinner, 1, row++);
+        grid.add(label("Report (minutes)"), 0, row);
+        grid.add(snoozeMinutesSpinner, 1, row++);
+
+        VBox box = section("Planification", grid);
+        box.getChildren().addAll(
+                highlightOverdueCheck,
+                desktopPopupCheck,
+                desktopPreviewButton
+        );
+        return box;
+    }
+
+    private Node buildSmtpSection() {
+        GridPane grid = grid();
+        int row = 0;
+        grid.add(label("Expéditeur"), 0, row);
+        grid.add(emailFromField, 1, row++);
+        grid.add(label("Hôte SMTP"), 0, row);
+        grid.add(smtpHostField, 1, row++);
+        grid.add(label("Port"), 0, row);
+        grid.add(smtpPortSpinner, 1, row++);
+        grid.add(label("Sécurité"), 0, row);
+        grid.add(smtpSecurityBox, 1, row++);
+        grid.add(label("Utilisateur"), 0, row);
+        grid.add(smtpUserField, 1, row++);
+        grid.add(label("Mot de passe"), 0, row);
+        grid.add(smtpPasswordField, 1, row);
+
+        Label hint = hint("Ces réglages sont partagés par les emails du gestionnaire et ceux envoyés aux prestataires.");
+        VBox box = section("Transport SMTP", grid, hint);
+        return box;
+    }
+
+    private Node buildManagerSection() {
+        GridPane grid = grid();
+        int row = 0;
+        grid.add(label("Destinataire"), 0, row);
+        grid.add(managerRecipientField, 1, row++);
+        grid.add(label("Objet"), 0, row);
+        grid.add(managerSubjectField, 1, row++);
+        grid.add(label("Corps"), 0, row);
+        grid.add(managerBodyArea, 1, row);
+
+        VBox preview = previewCard(managerPreviewTitle, managerPreviewBody);
+        VBox box = section("Emails gestionnaire", managerEmailEnabledCheck, grid, managerTestButton, preview);
+        return box;
+    }
+
+    private Node buildSupplierSection() {
+        GridPane grid = grid();
+        int row = 0;
+        grid.add(label("Objet"), 0, row);
+        grid.add(supplierSubjectField, 1, row++);
+        grid.add(label("Corps"), 0, row);
+        grid.add(supplierBodyArea, 1, row);
+
+        VBox preview = previewCard(supplierPreviewTitle, supplierPreviewBody);
+        VBox box = section("Emails prestataires", supplierEmailEnabledCheck, supplierSendOnDueDateCheck, grid, supplierTestButton, preview);
+        return box;
+    }
+
+    private Node buildHistorySection() {
+        Label hint = hint("Historique des derniers emails générés par le moteur automatique. Les erreurs SMTP et les statuts d'envoi apparaissent ici.");
+        VBox box = section("Historique des relances", hint, historyArea);
+        return box;
+    }
+
+    private Node buildPlaceholdersSection() {
+        Label title = new Label("Variables disponibles");
+        title.getStyleClass().add("dialog-section-title");
+
+        FlowPane tags = new FlowPane(8, 8);
+        String[] placeholders = {
+                "{{prestataire}}",
+                "{{facture}}",
+                "{{echeance}}",
+                "{{montant}}",
+                "{{delai}}",
+                "{{delai_jours}}",
+                "{{statut}}"
+        };
+        for (String placeholder : placeholders) {
+            Label pill = new Label(placeholder);
+            pill.getStyleClass().add("placeholder-pill");
+            tags.getChildren().add(pill);
+        }
+
+        Label info = hint("Les modèles sont partagés partout dans le moteur de relance. Le rendu ci-dessus se met à jour automatiquement.");
+        VBox box = new VBox(8, title, tags, info);
+        box.getStyleClass().add("dialog-section");
+        return box;
+    }
+
+    private VBox previewCard(Label title, Label body) {
+        VBox preview = new VBox(6, title, new Separator(), body);
+        preview.getStyleClass().add("notification-preview-card");
+        preview.setPadding(new Insets(10));
+        preview.setFillWidth(true);
+        return preview;
+    }
+
+    private GridPane grid() {
+        GridPane grid = new GridPane();
+        grid.setHgap(12);
+        grid.setVgap(12);
+        return grid;
+    }
+
+    private VBox section(String title, Node... content) {
+        Label header = new Label(title);
+        header.getStyleClass().add("dialog-section-title");
+        VBox box = new VBox(10, header);
+        box.getStyleClass().add("dialog-section");
+        box.getChildren().addAll(content);
+        box.setFillWidth(true);
+        for (Node node : content) {
+            if (node instanceof TextArea area) {
+                VBox.setVgrow(area, Priority.NEVER);
+            } else {
+                VBox.setVgrow(node, Priority.NEVER);
+            }
+        }
+        return box;
+    }
+
+    private Label label(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add("form-label");
+        return label;
+    }
+
+    private Label hint(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add("form-hint");
+        label.setWrapText(true);
+        return label;
+    }
+
+    private Node timeBox(Spinner<Integer> hour, Spinner<Integer> minute) {
+        HBox box = new HBox(6, hour, new Label(":"), minute);
+        box.setAlignment(Pos.CENTER_LEFT);
+        return box;
     }
 
     private Spinner<Integer> integerSpinner(int min, int max, int value, int step) {
@@ -368,22 +441,8 @@ public final class NotificationSettingsDialog extends Dialog<NotificationSetting
         factory.setAmountToStepBy(step);
         spinner.setValueFactory(factory);
         spinner.setEditable(false);
-        spinner.setPrefWidth(90);
+        spinner.setPrefWidth(110);
         return spinner;
-    }
-
-    private Label label(String text) {
-        Label label = new Label(text);
-        label.getStyleClass().add("form-label");
-        return label;
-    }
-
-    private Node timeBox(Spinner<Integer> hour, Spinner<Integer> minute) {
-        Label colon = new Label(":");
-        colon.getStyleClass().add("form-label");
-        HBox box = new HBox(6, hour, colon, minute);
-        box.setAlignment(Pos.CENTER_LEFT);
-        return box;
     }
 
     private NotificationSettings draftSettings() {
@@ -396,129 +455,124 @@ public final class NotificationSettingsDialog extends Dialog<NotificationSetting
                 highlightOverdueCheck.isSelected(),
                 desktopPopupCheck.isSelected(),
                 snoozeMinutesSpinner.getValue(),
-                emailEnabledCheck.isSelected(),
-                emailRecipientField.getText(),
+                managerEmailEnabledCheck.isSelected(),
+                managerRecipientField.getText(),
                 emailFromField.getText(),
                 smtpHostField.getText(),
                 smtpPortSpinner.getValue(),
                 smtpUserField.getText(),
                 smtpPasswordField.getText(),
                 security,
-                subjectField.getText(),
-                bodyArea.getText()
+                managerSubjectField.getText(),
+                managerBodyArea.getText(),
+                supplierEmailEnabledCheck.isSelected(),
+                supplierSendOnDueDateCheck.isSelected(),
+                supplierSubjectField.getText(),
+                supplierBodyArea.getText()
         );
     }
 
-    private void updateEmailUi() {
-        boolean enabled = emailEnabledCheck.isSelected();
-        emailRecipientField.setDisable(!enabled);
-        emailFromField.setDisable(!enabled);
-        smtpHostField.setDisable(!enabled);
-        smtpPortSpinner.setDisable(!enabled);
-        smtpUserField.setDisable(!enabled);
-        smtpPasswordField.setDisable(!enabled);
-        smtpSecurityBox.setDisable(!enabled);
-        boolean ready = isEmailDraftReady();
-        boolean serviceAvailable = AppServices.hasNotificationService();
-        emailTestButton.setDisable(!enabled || !serviceAvailable || !ready);
-    }
-
-    private boolean isEmailDraftReady() {
-        if (!emailEnabledCheck.isSelected()) {
-            return false;
-        }
-        String recipient = emailRecipientField.getText();
-        if (recipient == null || recipient.isBlank()) {
-            return false;
-        }
-        String host = smtpHostField.getText();
-        if (host == null || host.isBlank()) {
-            return false;
-        }
-        Integer port = smtpPortSpinner.getValue();
-        return port != null && port >= 1 && port <= 65535;
-    }
-
-    private String validateEmailSettings() {
-        if (!emailEnabledCheck.isSelected()) {
-            return null;
-        }
-        String recipient = emailRecipientField.getText();
-        if (recipient == null || recipient.isBlank()) {
-            return "Adresse destinataire obligatoire.";
-        }
-        String host = smtpHostField.getText();
-        if (host == null || host.isBlank()) {
-            return "Hote SMTP obligatoire.";
-        }
-        Integer port = smtpPortSpinner.getValue();
-        if (port == null || port < 1 || port > 65535) {
-            return "Port SMTP invalide.";
-        }
-        return null;
-    }
-
     private void updateSummary() {
-        NotificationSettings current = draftSettings().normalized();
-        summaryLabel.setText(current.summary(Locale.FRENCH));
+        summaryLabel.setText(draftSettings().normalized().summary(Locale.FRENCH));
     }
 
-    private void updatePreview() {
-        NotificationSettings draft = draftSettings();
+    private void updateUiState() {
+        boolean anyEmailFlow = managerEmailEnabledCheck.isSelected() || supplierEmailEnabledCheck.isSelected();
+        managerRecipientField.setDisable(!managerEmailEnabledCheck.isSelected());
+        managerSubjectField.setDisable(!managerEmailEnabledCheck.isSelected());
+        managerBodyArea.setDisable(!managerEmailEnabledCheck.isSelected());
+
+        supplierSendOnDueDateCheck.setDisable(!supplierEmailEnabledCheck.isSelected());
+        supplierSubjectField.setDisable(!supplierEmailEnabledCheck.isSelected());
+        supplierBodyArea.setDisable(!supplierEmailEnabledCheck.isSelected());
+
+        emailFromField.setDisable(!anyEmailFlow);
+        smtpHostField.setDisable(!anyEmailFlow);
+        smtpPortSpinner.setDisable(!anyEmailFlow);
+        smtpUserField.setDisable(!anyEmailFlow);
+        smtpPasswordField.setDisable(!anyEmailFlow);
+        smtpSecurityBox.setDisable(!anyEmailFlow);
+
+        boolean serviceAvailable = AppServices.hasNotificationService();
+        managerTestButton.setDisable(!serviceAvailable || !draftSettings().normalized().emailReady());
+        supplierTestButton.setDisable(!serviceAvailable || !draftSettings().normalized().supplierEmailReady());
+        desktopPreviewButton.setDisable(!serviceAvailable || !desktopPopupCheck.isSelected());
+    }
+
+    private void updatePreviews() {
+        NotificationSettings draft = draftSettings().normalized();
         NotificationTemplateEngine.Context base = NotificationTemplateEngine.sampleContext();
-        NotificationTemplateEngine.Context ctx = new NotificationTemplateEngine.Context(
+        NotificationTemplateEngine.Context context = new NotificationTemplateEngine.Context(
                 base.prestataire(),
                 base.facture(),
                 base.dueDate(),
                 base.montant(),
-                relativeLabel(draft.leadDays()),
-                draft.leadDays(),
-                false
+                base.relativeDelay(),
+                base.deltaDays(),
+                base.overdue()
         );
-        String subject = NotificationTemplateEngine.render(draft.subjectTemplate(), ctx);
-        String body = NotificationTemplateEngine.render(draft.bodyTemplate(), ctx);
-        previewTitle.setText(subject.isBlank() ? "Facture exemple — échéance le 12/05/2024" : subject);
-        previewBody.setText(body.isBlank()
-                ? "La facture de maintenance pour Studio Atlas arrive dans 3 jours. Statut : À venir."
-                : body);
+
+        String managerSubject = NotificationTemplateEngine.render(draft.subjectTemplate(), context);
+        String managerBody = NotificationTemplateEngine.render(draft.bodyTemplate(), context);
+        String supplierSubject = NotificationTemplateEngine.render(draft.supplierSubjectTemplate(), context);
+        String supplierBody = NotificationTemplateEngine.render(draft.supplierBodyTemplate(), context);
+
+        managerPreviewTitle.setText(managerSubject.isBlank() ? "Alerte échéance - Studio Atlas - Facture maintenance" : managerSubject);
+        managerPreviewBody.setText(managerBody.isBlank()
+                ? "Le prestataire Studio Atlas a une facture qui arrive dans 3 jours."
+                : managerBody);
+        supplierPreviewTitle.setText(supplierSubject.isBlank() ? "Rappel de paiement - Facture maintenance" : supplierSubject);
+        supplierPreviewBody.setText(supplierBody.isBlank()
+                ? "Bonjour Studio Atlas, nous vous rappelons que votre facture arrive à échéance."
+                : supplierBody);
     }
 
-    private static String relativeLabel(int lead) {
-        if (lead <= 0) {
-            return "aujourd'hui";
+    private void refreshHistory() {
+        List<Rappel> history = AppServices.notificationServiceOptional()
+                .map(service -> service.recentReminders(20))
+                .orElseGet(List::of);
+        if (history.isEmpty()) {
+            historyArea.setText("Aucun rappel enregistré pour le moment.");
+            return;
         }
-        if (lead == 1) {
-            return "dans 1 jour";
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+        StringBuilder sb = new StringBuilder();
+        for (Rappel rappel : history) {
+            String when = rappel.sentAt() != null ? rappel.sentAt().format(formatter) : rappel.dateEnvoi().format(formatter);
+            sb.append('[')
+                    .append(when)
+                    .append("] ")
+                    .append(rappel.statut())
+                    .append(" · ")
+                    .append(rappel.type())
+                    .append(" · ")
+                    .append(rappel.dest());
+            if (rappel.lastError() != null && !rappel.lastError().isBlank()) {
+                sb.append(" · erreur: ").append(rappel.lastError());
+            }
+            sb.append('\n');
         }
-        return "dans " + lead + " jours";
+        historyArea.setText(sb.toString().stripTrailing());
     }
 
-    private VBox section(String title, String subtitle, Node content) {
-        Label titleLabel = new Label(title);
-        titleLabel.getStyleClass().add("dialog-section-title");
-        titleLabel.setWrapText(true);
-
-        VBox box = new VBox(12);
-        box.getStyleClass().add("dialog-section");
-        box.getChildren().add(titleLabel);
-
-        if (subtitle != null && !subtitle.isBlank()) {
-            Label subtitleLabel = new Label(subtitle);
-            subtitleLabel.getStyleClass().add("dialog-section-subtitle");
-            subtitleLabel.setWrapText(true);
-            box.getChildren().add(subtitleLabel);
+    private String validateSettings() {
+        NotificationSettings draft = draftSettings().normalized();
+        if (!draft.hasAnyEmailFlow()) {
+            return null;
         }
-
-        VBox.setVgrow(content, Priority.ALWAYS);
-        box.getChildren().add(content);
-        box.setFillWidth(true);
-        return box;
+        if (draft.smtpHost() == null || draft.smtpHost().isBlank()) {
+            return "Hôte SMTP obligatoire.";
+        }
+        if (draft.smtpPort() < 1 || draft.smtpPort() > 65535) {
+            return "Port SMTP invalide.";
+        }
+        if (draft.emailEnabled() && (draft.emailRecipient() == null || draft.emailRecipient().isBlank())) {
+            return "Adresse email du gestionnaire obligatoire.";
+        }
+        return null;
     }
 
-    private Label hintLabel(String text) {
-        Label hint = new Label(text);
-        hint.getStyleClass().add("form-hint");
-        hint.setWrapText(true);
-        return hint;
+    private Window ownerWindow() {
+        return getDialogPane().getScene() == null ? null : getDialogPane().getScene().getWindow();
     }
 }

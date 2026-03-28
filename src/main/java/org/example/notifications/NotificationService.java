@@ -15,8 +15,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -29,9 +31,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-/**
- * Background service responsible for triggering invoice reminders and surfacing them via desktop notifications.
- */
 public final class NotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
@@ -84,8 +83,7 @@ public final class NotificationService {
         if (newSettings == null) {
             return;
         }
-        NotificationSettings normalized = newSettings.normalized();
-        this.settings = normalized;
+        this.settings = newSettings.normalized();
     }
 
     public void snooze(java.time.Duration duration) {
@@ -96,9 +94,6 @@ public final class NotificationService {
         }
     }
 
-    /**
-     * Emits a preview notification using the provided settings (if popups are enabled).
-     */
     public void sendPreview(NotificationSettings previewSettings) {
         NotificationSettings candidate = previewSettings == null ? settings : previewSettings.normalized();
         if (!candidate.desktopPopup()) {
@@ -123,11 +118,7 @@ public final class NotificationService {
 
     public void sendEmailPreview(NotificationSettings previewSettings) {
         NotificationSettings candidate = previewSettings == null ? settings : previewSettings.normalized();
-        if (!candidate.emailEnabled()) {
-            return;
-        }
-        if (!candidate.emailReady()) {
-            log.warn("Email preview skipped: SMTP settings are incomplete.");
+        if (!candidate.emailEnabled() || !candidate.emailReady()) {
             return;
         }
         executor.execute(() -> {
@@ -145,13 +136,59 @@ public final class NotificationService {
             String body = NotificationTemplateEngine.render(candidate.bodyTemplate(), ctx);
             EmailMessage message = buildEmailMessage(candidate, candidate.emailRecipient(), subject, body);
             if (message == null) {
-                log.warn("Email preview skipped: missing recipient or sender.");
+                log.warn("Email preview skipped: missing sender or recipient.");
                 return;
             }
             try {
                 emailSender.send(candidate, message);
             } catch (Exception ex) {
                 log.error("Unable to send email preview", ex);
+            }
+        });
+    }
+
+    public List<Rappel> recentReminders(int limit) {
+        try {
+            return dao.rappelsHistorique(limit);
+        } catch (Exception ex) {
+            log.error("Unable to load reminder history", ex);
+            return List.of();
+        }
+    }
+
+    public void sendSupplierEmailPreview(NotificationSettings previewSettings) {
+        NotificationSettings candidate = previewSettings == null ? settings : previewSettings.normalized();
+        if (!candidate.supplierEmailEnabled() || !candidate.smtpReady()) {
+            return;
+        }
+        executor.execute(() -> {
+            String previewRecipient = firstNonBlank(
+                    candidate.emailRecipient(),
+                    candidate.emailFrom(),
+                    candidate.smtpUsername(),
+                    "test@example.com"
+            );
+            NotificationTemplateEngine.Context sample = NotificationTemplateEngine.sampleContext();
+            NotificationTemplateEngine.Context ctx = new NotificationTemplateEngine.Context(
+                    sample.prestataire(),
+                    sample.facture(),
+                    sample.dueDate(),
+                    sample.montant(),
+                    relativeLabel(candidate.leadDays()),
+                    candidate.leadDays(),
+                    false
+            );
+            String subject = NotificationTemplateEngine.render(candidate.supplierSubjectTemplate(), ctx);
+            String body = NotificationTemplateEngine.render(candidate.supplierBodyTemplate(), ctx);
+            EmailMessage message = buildEmailMessage(candidate, previewRecipient, subject, body);
+            if (message == null) {
+                log.warn("Supplier email preview skipped: missing sender or recipient.");
+                return;
+            }
+            try {
+                emailSender.send(candidate, message);
+            } catch (Exception ex) {
+                log.error("Unable to send supplier email preview", ex);
             }
         });
     }
@@ -166,7 +203,7 @@ public final class NotificationService {
 
     private void tick() {
         NotificationSettings cfg = settings;
-        if (!cfg.desktopPopup() && !cfg.emailEnabled()) {
+        if (!cfg.desktopPopup() && !cfg.hasAnyEmailFlow()) {
             return;
         }
         Instant nowInstant = Instant.now();
@@ -174,20 +211,22 @@ public final class NotificationService {
             return;
         }
         LocalDateTime now = LocalDateTime.ofInstant(nowInstant, ZoneId.systemDefault());
-        handleFirstReminders(now, cfg);
-        handleRepeatReminders(nowInstant, cfg);
+        Set<Integer> freshlyNotified = handleFirstReminders(now, nowInstant, cfg);
+        handleDueDayEmailReminders(now, nowInstant, cfg, freshlyNotified);
+        handleRepeatReminders(now, nowInstant, cfg, freshlyNotified);
         flushEmailOutbox(cfg);
         cleanupHistory();
     }
 
-    private void handleFirstReminders(LocalDateTime now, NotificationSettings cfg) {
+    private Set<Integer> handleFirstReminders(LocalDateTime now, Instant nowInstant, NotificationSettings cfg) {
+        Set<Integer> freshlyNotified = new HashSet<>();
         LocalDateTime windowLimit = now.plusDays(cfg.leadDays());
         List<Facture> candidates;
         try {
             candidates = dao.facturesImpayeesAvant(windowLimit);
         } catch (Exception ex) {
             log.error("Unable to load unpaid invoices scheduled before {}", windowLimit, ex);
-            return;
+            return freshlyNotified;
         }
         for (Facture facture : candidates) {
             LocalDate due = facture.getEcheance();
@@ -199,45 +238,147 @@ public final class NotificationService {
                 continue;
             }
             boolean desktopSent = emitDesktopNotification(facture, cfg);
-            boolean queuedEmail = queueEmailReminder(facture, cfg);
-            if (desktopSent || queuedEmail) {
+            boolean managerQueued = queueManagerEmailReminder(
+                    facture,
+                    cfg,
+                    Rappel.TYPE_MANAGER_PRE,
+                    oneShotJobKey("manager-pre", facture)
+            );
+            boolean supplierQueued = queueSupplierEmailReminder(
+                    facture,
+                    cfg,
+                    Rappel.TYPE_SUPPLIER_PRE,
+                    oneShotJobKey("supplier-pre", facture)
+            );
+            if (desktopSent || managerQueued || supplierQueued) {
                 try {
                     dao.marquerPreavisEnvoye(facture.getId());
-                    reminderHistory.put(facture.getId(), Instant.now());
+                    reminderHistory.put(facture.getId(), nowInstant);
+                    freshlyNotified.add(facture.getId());
                 } catch (Exception ex) {
                     log.error("Unable to mark pre-notice sent for facture {}", facture.getId(), ex);
                 }
             }
         }
+        return freshlyNotified;
     }
 
-    private void handleRepeatReminders(Instant now, NotificationSettings cfg) {
+    private void handleDueDayEmailReminders(LocalDateTime now,
+                                            Instant nowInstant,
+                                            NotificationSettings cfg,
+                                            Set<Integer> freshlyNotified) {
+        if (!cfg.hasAnyEmailFlow()) {
+            return;
+        }
+        List<Facture> dueInvoices;
+        try {
+            dueInvoices = dao.facturesImpayeesPourDashboard(now);
+        } catch (Exception ex) {
+            log.error("Unable to load invoices for due-day reminders", ex);
+            return;
+        }
+        LocalDate today = now.toLocalDate();
+        for (Facture facture : dueInvoices) {
+            if (freshlyNotified.contains(facture.getId())) {
+                continue;
+            }
+            LocalDate due = facture.getEcheance();
+            if (due == null || !due.isEqual(today)) {
+                continue;
+            }
+            if (now.isBefore(due.atTime(cfg.reminderHour(), cfg.reminderMinute()))) {
+                continue;
+            }
+            boolean managerQueued = queueManagerEmailReminder(
+                    facture,
+                    cfg,
+                    Rappel.TYPE_MANAGER_DUE,
+                    oneShotJobKey("manager-due", facture)
+            );
+            boolean supplierQueued = cfg.supplierSendOnDueDate() && queueSupplierEmailReminder(
+                    facture,
+                    cfg,
+                    Rappel.TYPE_SUPPLIER_DUE,
+                    oneShotJobKey("supplier-due", facture)
+            );
+            if (managerQueued || supplierQueued) {
+                reminderHistory.put(facture.getId(), nowInstant);
+                freshlyNotified.add(facture.getId());
+            }
+        }
+    }
+
+    private void handleRepeatReminders(LocalDateTime now,
+                                       Instant nowInstant,
+                                       NotificationSettings cfg,
+                                       Set<Integer> freshlyNotified) {
         int repeatHours = cfg.repeatEveryHours();
         if (repeatHours <= 0) {
             return;
         }
-        List<Facture> pending = new ArrayList<>();
+        List<Facture> pending;
         try {
             pending = dao.facturesNonPayeesAvecPreavis();
         } catch (Exception ex) {
             log.error("Unable to load invoices awaiting repeat reminders", ex);
+            return;
         }
         if (pending.isEmpty()) {
             return;
         }
         long repeatMinutes = repeatHours * 60L;
+        LocalDate today = now.toLocalDate();
         for (Facture facture : pending) {
+            if (freshlyNotified.contains(facture.getId())) {
+                continue;
+            }
+            LocalDate due = facture.getEcheance();
+            if (due == null || due.isAfter(today)) {
+                continue;
+            }
             Instant last = reminderHistory.get(facture.getId());
             if (last != null) {
-                long elapsed = java.time.Duration.between(last, now).toMinutes();
+                long elapsed = java.time.Duration.between(last, nowInstant).toMinutes();
                 if (elapsed < repeatMinutes) {
                     continue;
                 }
             }
             boolean desktopSent = emitDesktopNotification(facture, cfg);
-            boolean queuedEmail = queueEmailReminder(facture, cfg);
-            if (desktopSent || queuedEmail) {
-                reminderHistory.put(facture.getId(), now);
+            boolean managerQueued = false;
+            boolean supplierQueued = false;
+
+            if (due.isEqual(today)) {
+                managerQueued = queueManagerEmailReminder(
+                        facture,
+                        cfg,
+                        Rappel.TYPE_MANAGER_DUE,
+                        repeatJobKey("manager-due", facture, now, repeatHours)
+                );
+                if (cfg.supplierSendOnDueDate()) {
+                    supplierQueued = queueSupplierEmailReminder(
+                            facture,
+                            cfg,
+                            Rappel.TYPE_SUPPLIER_DUE,
+                            repeatJobKey("supplier-due", facture, now, repeatHours)
+                    );
+                }
+            } else if (due.isBefore(today)) {
+                managerQueued = queueManagerEmailReminder(
+                        facture,
+                        cfg,
+                        Rappel.TYPE_MANAGER_OVERDUE,
+                        repeatJobKey("manager-overdue", facture, now, repeatHours)
+                );
+                supplierQueued = queueSupplierEmailReminder(
+                        facture,
+                        cfg,
+                        Rappel.TYPE_SUPPLIER_OVERDUE,
+                        repeatJobKey("supplier-overdue", facture, now, repeatHours)
+                );
+            }
+
+            if (desktopSent || managerQueued || supplierQueued) {
+                reminderHistory.put(facture.getId(), nowInstant);
             }
         }
     }
@@ -248,7 +389,7 @@ public final class NotificationService {
         }
         try {
             Prestataire prestataire = dao.findPrestataire(facture.getPrestataireId());
-            NotificationTemplateEngine.Context context = buildContext(facture, prestataire, cfg.leadDays());
+            NotificationTemplateEngine.Context context = buildContext(facture, prestataire);
             String title = NotificationTemplateEngine.render(cfg.subjectTemplate(), context);
             String body = NotificationTemplateEngine.render(cfg.bodyTemplate(), context);
             notifier.notify(title, body);
@@ -259,7 +400,10 @@ public final class NotificationService {
         }
     }
 
-    private boolean queueEmailReminder(Facture facture, NotificationSettings cfg) {
+    private boolean queueManagerEmailReminder(Facture facture,
+                                              NotificationSettings cfg,
+                                              String type,
+                                              String jobKey) {
         if (!cfg.emailEnabled()) {
             return false;
         }
@@ -269,20 +413,74 @@ public final class NotificationService {
         }
         try {
             Prestataire prestataire = dao.findPrestataire(facture.getPrestataireId());
-            NotificationTemplateEngine.Context context = buildContext(facture, prestataire, cfg.leadDays());
+            NotificationTemplateEngine.Context context = buildContext(facture, prestataire);
             String subject = NotificationTemplateEngine.render(cfg.subjectTemplate(), context);
             String body = NotificationTemplateEngine.render(cfg.bodyTemplate(), context);
-            Rappel rappel = new Rappel(0, facture.getId(), recipient, subject, body, LocalDateTime.now(), false);
-            dao.addRappel(rappel);
-            return true;
+            Integer prestataireId = prestataire == null ? facture.getPrestataireId() : prestataire.getId();
+            Rappel rappel = new Rappel(
+                    0,
+                    jobKey,
+                    type,
+                    facture.getId(),
+                    prestataireId,
+                    recipient,
+                    subject,
+                    body,
+                    LocalDateTime.now(),
+                    false,
+                    Rappel.STATUS_PENDING,
+                    0,
+                    "",
+                    null
+            );
+            return dao.enqueueRappelIfAbsent(rappel);
         } catch (Exception ex) {
-            log.error("Unable to queue email reminder for facture {}", facture.getId(), ex);
+            log.error("Unable to queue manager email reminder for facture {}", facture.getId(), ex);
+            return false;
+        }
+    }
+
+    private boolean queueSupplierEmailReminder(Facture facture,
+                                               NotificationSettings cfg,
+                                               String type,
+                                               String jobKey) {
+        if (!cfg.supplierEmailEnabled()) {
+            return false;
+        }
+        try {
+            Prestataire prestataire = dao.findPrestataire(facture.getPrestataireId());
+            String recipient = prestataire == null ? "" : safe(prestataire.getEmail());
+            if (recipient.isBlank()) {
+                return false;
+            }
+            NotificationTemplateEngine.Context context = buildContext(facture, prestataire);
+            String subject = NotificationTemplateEngine.render(cfg.supplierSubjectTemplate(), context);
+            String body = NotificationTemplateEngine.render(cfg.supplierBodyTemplate(), context);
+            Rappel rappel = new Rappel(
+                    0,
+                    jobKey,
+                    type,
+                    facture.getId(),
+                    prestataire == null ? facture.getPrestataireId() : prestataire.getId(),
+                    recipient,
+                    subject,
+                    body,
+                    LocalDateTime.now(),
+                    false,
+                    Rappel.STATUS_PENDING,
+                    0,
+                    "",
+                    null
+            );
+            return dao.enqueueRappelIfAbsent(rappel);
+        } catch (Exception ex) {
+            log.error("Unable to queue supplier email reminder for facture {}", facture.getId(), ex);
             return false;
         }
     }
 
     private void flushEmailOutbox(NotificationSettings cfg) {
-        if (!cfg.emailEnabled()) {
+        if (!cfg.hasAnyEmailFlow()) {
             return;
         }
         List<Rappel> pending;
@@ -295,20 +493,23 @@ public final class NotificationService {
         if (pending.isEmpty()) {
             return;
         }
-        if (!cfg.emailReady()) {
+        if (!cfg.smtpReady()) {
             log.warn("Email reminders pending but SMTP settings are incomplete.");
             return;
         }
         for (Rappel rappel : pending) {
             EmailMessage message = buildEmailMessage(cfg, rappel.dest(), rappel.sujet(), rappel.corps());
             if (message == null) {
-                log.warn("Email reminder skipped for rappel {}: missing recipient or sender.", rappel.id());
+                dao.markRappelSkipped(rappel.id(), "Destinataire ou expéditeur invalide.");
                 continue;
             }
             try {
                 emailSender.send(cfg, message);
                 dao.markRappelEnvoye(rappel.id());
             } catch (Exception ex) {
+                int backoffMinutes = Math.min(60, Math.max(5, (rappel.attemptCount() + 1) * 5));
+                LocalDateTime nextAttempt = LocalDateTime.now().plusMinutes(backoffMinutes);
+                dao.markRappelFailed(rappel.id(), ex.getMessage(), nextAttempt);
                 log.error("Unable to send email reminder {}", rappel.id(), ex);
             }
         }
@@ -319,27 +520,22 @@ public final class NotificationService {
         if (resolvedTo.isBlank()) {
             return null;
         }
-        String from = safe(cfg.emailFrom());
-        if (from.isBlank()) {
-            from = safe(cfg.smtpUsername());
-        }
-        if (from.isBlank()) {
-            from = resolvedTo;
+        String from = firstNonBlank(cfg.emailFrom(), cfg.smtpUsername(), cfg.emailRecipient());
+        if (from == null || from.isBlank()) {
+            return null;
         }
         String safeSubject = subject == null ? "" : subject;
         String safeBody = body == null ? "" : body;
         return new EmailMessage(resolvedTo, from, safeSubject, safeBody);
     }
 
-    private NotificationTemplateEngine.Context buildContext(Facture facture,
-                                                            Prestataire prestataire,
-                                                            int leadDays) {
+    private NotificationTemplateEngine.Context buildContext(Facture facture, Prestataire prestataire) {
         String prestataireName = Optional.ofNullable(prestataire)
                 .map(p -> {
                     String company = safe(p.getSociete());
-                    return !company.isEmpty() ? company : safe(p.getNom());
+                    return company.isEmpty() ? safe(p.getNom()) : company;
                 })
-                .filter(s -> !s.isEmpty())
+                .filter(value -> !value.isEmpty())
                 .orElseGet(() -> "Prestataire #" + facture.getPrestataireId());
 
         String factureLabel = safe(facture.getDescription());
@@ -364,7 +560,7 @@ public final class NotificationService {
                 dueDate,
                 amountLabel,
                 relative,
-                Math.abs(deltaDays),
+                deltaDays,
                 overdue
         );
     }
@@ -388,6 +584,37 @@ public final class NotificationService {
         } catch (Exception ex) {
             log.error("Unable to seed reminder history", ex);
         }
+    }
+
+    private static String oneShotJobKey(String prefix, Facture facture) {
+        LocalDate due = facture == null ? null : facture.getEcheance();
+        String dueKey = due == null ? "none" : due.toString();
+        int factureId = facture == null ? 0 : facture.getId();
+        return prefix + ":" + factureId + ":" + dueKey;
+    }
+
+    private static String repeatJobKey(String prefix,
+                                       Facture facture,
+                                       LocalDateTime now,
+                                       int repeatHours) {
+        long bucketSizeSeconds = Math.max(1, repeatHours) * 3600L;
+        long epochSeconds = now.toEpochSecond(ZoneOffset.UTC);
+        long bucket = Math.floorDiv(epochSeconds, bucketSizeSeconds);
+        int factureId = facture == null ? 0 : facture.getId();
+        return prefix + ":" + factureId + ":" + bucket;
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            String safe = safe(value);
+            if (!safe.isBlank()) {
+                return safe;
+            }
+        }
+        return "";
     }
 
     private static String safe(String value) {

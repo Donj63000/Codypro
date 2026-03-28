@@ -87,6 +87,11 @@ public final class SecureDB extends DB {
         return new ServiceRow(service.id(), encryptDescription(service.desc()), service.date(), service.status());
     }
 
+    @Override
+    protected SecretKey notificationSecretKey() {
+        return key;
+    }
+
     public int userId() {
         return userId;
     }

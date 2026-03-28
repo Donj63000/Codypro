@@ -74,7 +74,7 @@ public final class MainView {
     private final Button btnFactures = new Button("Factures");
     private final Button btnExport = new Button("Exporter PDF");
     private final Button btnRefresh = new Button("Recharger");
-    private final Button btnNotifications = new Button("Configurer notifications");
+    private final Button btnNotifications = new Button("Centre de relances");
     private final Button btnAccount = new Button("Configuration du compte");
 
     private final GridPane fichePane = new GridPane();
@@ -138,7 +138,7 @@ public final class MainView {
         btnAccount.getStyleClass().addAll("outline", "header-action");
         btnAccount.setOnAction(e -> openAccountManager());
         btnNotifications.getStyleClass().addAll("outline", "header-action");
-        btnNotifications.setTooltip(new Tooltip("Configurer le préavis et la présentation des alertes."));
+        btnNotifications.setTooltip(new Tooltip("Configurer les alertes automatiques, les emails internes et les relances prestataires."));
         btnNotifications.setOnAction(e -> openNotificationSettings());
         sessionLabel.getStyleClass().add("session-indicator");
 
@@ -146,7 +146,22 @@ public final class MainView {
 
         // Top: menu + header
         MenuBar menuBar = new MenuBar();
-        menuBar.getMenus().add(new Menu("Fichier"));
+        Menu menuFile = new Menu("Fichier");
+        MenuItem refreshItem = new MenuItem("Recharger");
+        refreshItem.setOnAction(e -> reload(tfSearch.getText().trim()));
+        menuFile.getItems().add(refreshItem);
+
+        Menu menuNotifications = new Menu("Notifications");
+        MenuItem remindersItem = new MenuItem("Centre de relances");
+        remindersItem.setOnAction(e -> openNotificationSettings());
+        menuNotifications.getItems().add(remindersItem);
+
+        Menu menuCompte = new Menu("Compte");
+        MenuItem accountItem = new MenuItem("Configuration du compte");
+        accountItem.setOnAction(e -> openAccountManager());
+        menuCompte.getItems().add(accountItem);
+
+        menuBar.getMenus().addAll(menuFile, menuNotifications, menuCompte);
         menuBar.getStyleClass().add("app-menu");
 
         ImageView logoView = loadLogoImage();
@@ -865,7 +880,7 @@ public final class MainView {
             try {
                 LocalDateTime now = LocalDateTime.now();
                 LocalDateTime limit = now.plusDays(Math.max(1, cfg.leadDays()));
-                List<Facture> factures = dao.facturesImpayeesAvant(limit);
+                List<Facture> factures = dao.facturesImpayeesPourDashboard(limit);
                 Map<Integer, Prestataire> cache = new HashMap<>();
                 List<AlertInfo> alerts = new ArrayList<>();
                 for (Facture facture : factures) {
